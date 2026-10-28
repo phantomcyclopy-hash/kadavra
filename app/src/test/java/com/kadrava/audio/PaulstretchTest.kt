@@ -50,7 +50,7 @@ class PaulstretchTest {
 
     @Test fun fftSizeIsPowerOfTwoCoveringWindow() {
         assertEquals(16384, PaulstretchParams(windowSeconds = 0.25).fftSize(44100))
-        assertEquals(2048, PaulstretchParams(windowSeconds = 0.05).fftSize(44100))
+        assertEquals(4096, PaulstretchParams(windowSeconds = 0.05).fftSize(44100))
         assertEquals(131072, PaulstretchParams(windowSeconds = 1.0).fftSize(192000))
     }
 
