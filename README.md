@@ -1,4 +1,4 @@
-# Kadavra — visão do projeto (v0.3.0)
+# Kadavra — visão do projeto (v0.4.1)
 
 Estação de áudio nativa para Android (Kotlin + Jetpack Compose), pensada como um **instrumento de
 design sonoro experimental** com interface 100% em texto, idêntica a um terminal.
@@ -14,12 +14,14 @@ Application ID: `com.kadrava.audio` · minSdk 26 · alvo: Galaxy A55.
    deste documento).
 2. **Fonte única: DejaVu Sans Mono** (arquivo fornecido pelo autor), embutida no app
    (`res/font`), junto com o texto da licença DejaVu. Nenhum outro tipo de letra.
-3. **Cabeçalho.** O título aparece com as letras separadas por espaço (`K a d r a v a`), em corpo
-   levemente maior que o resto (tamanho de subtítulo). São 7 letras, cada uma numa das 7 cores do
-   arco-íris (vermelho, laranja, amarelo, verde, azul, anil, violeta), tiradas da paleta da logo.
-   A grafia do cabeçalho segue exatamente o desenho do autor; o nome do app/pacote continua `Kadavra`.
-4. **Cursor de toque.** O bloco verde do Termux **não** fica parado na tela: aparece apenas ao lado do
-   item que está sendo tocado/selecionado, e some em seguida.
+3. **Cabeçalho.** `K a d a v r a 𝆯`: letras separadas por espaço, em corpo levemente maior (subtítulo).
+   As 7 letras de "Kadavra" têm as 7 cores do arco-íris (paleta da logo); o símbolo final (U+1D1AF,
+   "pedal up mark") é branco. A DejaVu Sans Mono não tem esse símbolo, então ele depende da fonte de
+   reserva do aparelho.
+4. **Cores.** Tudo é branco, exceto: a logo, as letras do nome e os botões/sliders, que são vermelhos.
+   Só o **último** botão/slider selecionado muda de cor (vermelho para branco, com fade); os demais
+   continuam vermelhos. Nos sliders, apenas o `#` muda. Item de menu (engine) aberto fica vermelho.
+   Controles/engines indisponíveis aparecem em cinza. Não há cursor verde nem outro quadrado.
 5. **Tudo em ASCII.** Menus, parâmetros (barras `------#-----`), progresso, miniforma de onda na
    linha do áudio carregado e exportação usam só caracteres da tabela ASCII.
 6. **Honestidade técnica.** Um motor só aparece como disponível se faz o que anuncia. Nada de
@@ -35,8 +37,8 @@ Marcados com ¹ aceitam o **Picotador + Embaralhador** (seção 3).
 | Nome | Função | Escopo planejado | Estado |
 |---|---|---|---|
 | **Mouton** ¹ | Time-stretch espectral extremo (antigo Paulstretch) | STFT, fase aleatória, fator 1–100x, janela 0,05–1 s, semente | **Implementado** (STFT + Picotador/Embaralhador + pré-escuta; código da v0.3.0 ainda não compilado) |
-| **Cindy** | Analisador espectral | FFT configurável, janelas, pico/RMS, eixo logarítmico, peak-hold, a partir do sinal real | não implementado |
-| **Mose** ¹ | Equalizador | multibanda com filtros biquad, faixas validadas, sem clipping inesperado | não implementado |
+| **Cindy** | Analisador espectral | FFT 1024–16384, janelas hann/hamming/blackman/retangular, pico/RMS/crest, eixo log ou linear, peak-hold, instantâneo na posição de reprodução; análise offline do arquivo (não é analisador ao vivo) | **Implementado** (código da v0.4.0 ainda não compilado) |
+| **Mose** ¹ | Equalizador | 6 bandas biquad (shelf grave 80 Hz, picos 250/800/2500/7000 Hz Q 1, shelf agudo 12 kHz), ±18 dB; frequências e Q fixos na interface, validados no motor (20 Hz–20 kHz, Q 0,3–8); bandas ≥ 0,45×taxa são ignoradas | **Implementado** (código da v0.4.0 ainda não compilado) |
 | **Wagner** ¹ | Reverb | convolução particionada por FFT com qualquer resposta ao impulso (IR) importada, mais reverb sintético por redes de linhas de atraso (FDN) com matriz de feedback, para espaços reais ou impossíveis | não implementado |
 | **Heisenberg** ¹ | Delay | tempo/feedback/mix, ping-pong, filtragem no feedback, delay com deslocamento de frequência/pitch, delay granular, delay espectral | não implementado |
 | **Vlad** ¹ | Distorção | bit-crushing, waveshaping, wavefolding, clipping assimétrico, controle de harmônicos, sobreamostragem contra aliasing | não implementado |
@@ -71,28 +73,28 @@ Disponível nos motores marcados com ¹.
 
 ## 4. Estado atual
 
-- **v0.2.0 (verificada no GitHub Actions):** compilou; 40 de 41 testes passaram (o erro era um valor
-  esperado errado no teste de `fftSize`, já corrigido).
-- **v0.3.0 (fase 4): escrita, mas ainda NÃO compilada nem testada.** Traz: interface de terminal com
-  DejaVu Sans Mono embutida (`res/font`, licença em `third_party/DejaVu-LICENSE.txt`), cabeçalho
-  `K a d r a v a *` com 7 cores, cursor verde só no item tocado, nomes novos dos motores, Picotador +
-  Embaralhador no Mouton (testes em `SlicerTest`), pré-escuta do resultado (`[Listen]`/`[Original]`),
-  miniforma de onda de uma linha e linha de busca `------#-----`.
-- **Ainda não verificado:** execução no aparelho, qualidade sonora do Mouton ouvida, memória/tempo no A55.
+- **v0.2.0 (verificada no GitHub Actions):** compilou; 40 de 41 testes passaram (erro corrigido depois).
+- **v0.3.0 e v0.4.0: escritas, mas ainda NÃO compiladas nem testadas.** A v0.4.0 acrescenta Cindy e Mose
+  (e um renderizador offline genérico, `OfflineRenderer`, do qual o Mouton agora também depende).
+- A matemática foi conferida num protótipo Python: ganho dos filtros biquad no centro/extremos,
+  escala do analisador (seno de 0,5 lê -6,02 dBFS com qualquer janela), algoritmo do Mouton.
+- **Ainda não verificado:** execução no aparelho, qualidade sonora ouvida, memória/tempo no A55.
 - Interpretações minhas do desenho (corrija se estiverem erradas):
   - as 4 linhas `\ / \ \` amarelo-esverdeadas ficam como no desenho em repouso e giram
     (`\ | / -`) enquanto há trabalho em andamento;
   - `[Logout]` encerra a sessão (para o áudio, apaga temporários e fecha o app); não há contas;
-  - a saída é **WAV** (`[nome].wav`): o Android não tem codificador MP3 nativo, então o `.mp3` do
-    desenho não é possível sem biblioteca externa; M4A/AAC seria o caminho viável;
+  - a saída é **WAV**: o Android não tem codificador MP3 nativo; M4A/AAC seria o caminho viável;
   - `[Rewind]` volta ao início sem parar nem iniciar a reprodução.
+- Limitações novas: a Cindy analisa o arquivo (até 1500 janelas espalhadas, 50% de sobreposição), não o
+  áudio ao vivo; o espectro usa a média dos canais, pico/RMS usam todos; a Mose ainda não tem controle
+  de frequência/Q na interface.
 
 ## 5. Roteiro
 
 | Fase | Entrega |
 |---|---|
 | 4 | **Escrita (aguarda build):** interface terminal definitiva, nomes novos, pré-escuta do resultado, Picotador/Embaralhador no Mouton |
-| 5 | Cindy (analisador) e Mose (EQ) |
+| 5 | **Escrita (aguarda build):** Cindy (analisador) e Mose (EQ) |
 | 6 | Vlad e Heisenberg |
 | 7 | Wagner (convolução + FDN) |
 | 8 | Safo e Guglielmo |

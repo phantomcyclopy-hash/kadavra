@@ -23,13 +23,15 @@ object Term {
 
 object Palette {
     val Bg = Color(0xFF000000)       // absolute OLED black
-    val Fg = Color(0xFFF2F2F2)
-    val Dim = Color(0xFF8E8E8E)      // ~6:1 contrast on black
-    val Prompt = Color(0xFF55E36B)   // terminal green
-    val Cursor = Color(0xFF00C800)   // touch cursor block
-    val Error = Color(0xFFFF6B6B)
-    val Version = Color(0xFFE53935)
-    val Glyph = Color(0xFFB8D43A)    // yellow-green activity glyphs
+    val Fg = Color(0xFFFFFFFF)       // everything is white...
+    val Dim = Fg                     // (kept as an alias: no gray text)
+    val Prompt = Fg
+    val Error = Fg
+    val Version = Fg
+    val Glyph = Fg
+    val Button = Color(0xFFFF3B30)   // ...except buttons and sliders (red)
+    val Selected = Color(0xFFFFFFFF) // colour of the last selected button/slider
+    val Disabled = Color(0xFF8E8E8E) // unavailable controls/engines only
     val Rainbow = listOf(            // 7 header letters
         Color(0xFFFF0000), Color(0xFFFB7600), Color(0xFFFAE300), Color(0xFF47CC00),
         Color(0xFF0080FF), Color(0xFF5000FF), Color(0xFF8000EE),

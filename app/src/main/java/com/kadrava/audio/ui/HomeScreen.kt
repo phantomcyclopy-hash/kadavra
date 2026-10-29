@@ -90,7 +90,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
 
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
         val cols = ((constraints.maxWidth - 2 * padPx) / cellPx).toInt().coerceIn(20, 90)
-        CompositionLocalProvider(LocalTermCols provides cols) {
+        CompositionLocalProvider(LocalTermCols provides cols, LocalSelection provides remember { SelectionState() }) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
@@ -102,19 +102,25 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
                 EngineCatalog.all.forEach { e ->
                     TermItem(
                         buildList {
-                            add(Span("~ ", Palette.Prompt))
-                            add(Span(e.name, if (e.implemented) Palette.Fg else Palette.Dim))
-                            if (!e.implemented) add(Span("  (indisponível)", Palette.Dim))
+                            add(Span("~ "))
+                            if (e.implemented) add(Span(e.name, kind = SpanKind.OPTION))
+                            else { add(Span(e.name, Palette.Disabled)); add(Span("  (indisponível)", Palette.Disabled)) }
                         },
+                        key = e.id,
+                        active = ui.selectedEngine == e.id,
                         onClick = { vm.selectEngine(e) },
                         description = e.name + if (e.implemented) "" else ", indisponível",
                     )
-                    if (e.id == "mouton" && ui.selectedEngine == "mouton") MoutonPanel(ui, original?.waveform, vm)
+                    if (ui.selectedEngine == e.id) when (e.id) {
+                        "mouton" -> MoutonPanel(ui, original?.waveform, vm)
+                        "mose" -> MosePanel(ui, original?.waveform, vm)
+                        "cindy" -> CindyPanel(ui, active?.waveform?.sampleRate, active != null && !ui.previewLoading, vm)
+                    }
                 }
 
                 // import
                 TermItem(
-                    listOf(Span("$ "), Span("[Import]", Palette.Prompt)),
+                    listOf(Span("$ "), Span("[Import]", kind = SpanKind.CONTROL)),
                     onClick = { picker.launch(arrayOf("audio/*", "application/ogg")) },
                     description = "Importar áudio",
                 )
@@ -124,7 +130,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
                     load is LoadState.Loading -> {
                         val p = load.progress
                         TermItem(listOf(Span("= "), Span("[${load.stage}] "), Span(if (p != null) "${asciiBar(p, 10)} ${(p * 100).toInt()}%" else "(progresso não mensurável)", Palette.Dim)))
-                        TermItem(listOf(Span("[Cancel]", Palette.Prompt)), onClick = vm::cancelLoad)
+                        TermItem(listOf(Span("[Cancel]", kind = SpanKind.CONTROL)), onClick = vm::cancelLoad)
                     }
                     load is LoadState.Error -> {
                         TermItem(listOf(Span("= "), Span("[erro] ", Palette.Error), Span(load.message, Palette.Error)))
@@ -140,15 +146,15 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
                 // transport
                 val canPlay = active != null && !ui.previewLoading
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TermItem(listOf(Span("[Play]", Palette.Prompt)), enabled = canPlay, separator = false, onClick = vm::play)
-                    TermItem(listOf(Span("[Pause]", Palette.Prompt)), enabled = canPlay, separator = false, onClick = vm::pause)
-                    TermItem(listOf(Span("[Rewind]", Palette.Prompt)), enabled = canPlay, separator = false, onClick = vm::rewind)
+                    TermItem(listOf(Span("[Play]", kind = SpanKind.CONTROL)), enabled = canPlay, separator = false, onClick = vm::play)
+                    TermItem(listOf(Span("[Pause]", kind = SpanKind.CONTROL)), enabled = canPlay, separator = false, onClick = vm::pause)
+                    TermItem(listOf(Span("[Rewind]", kind = SpanKind.CONTROL)), enabled = canPlay, separator = false, onClick = vm::rewind)
                 }
                 TermText(">", color = Palette.Dim)
 
                 // export
                 TermItem(
-                    listOf(Span("! "), Span("[Export]", Palette.Prompt)),
+                    listOf(Span("! "), Span("[Export]", kind = SpanKind.CONTROL)),
                     enabled = ui.process is ProcessState.Done,
                     onClick = { (ui.process as? ProcessState.Done)?.let { exporter.launch(it.suggestedName) } },
                     separator = false,
@@ -170,7 +176,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
 
                 // end session
                 TermItem(
-                    listOf(Span("[Logout]", Palette.Prompt), Span(";.", Palette.Dim)),
+                    listOf(Span("[Logout]", kind = SpanKind.CONTROL), Span(";.", Palette.Dim)),
                     separator = false,
                     onClick = { vm.endSession(); (ctx as? Activity)?.finishAffinity() },
                     description = "Encerrar sessão e sair",
@@ -182,13 +188,13 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
 
 @Composable
 private fun Header() {
-    val letters = "Kadrava"
+    val letters = "Kadavra"
     val text = buildAnnotatedString {
         letters.forEachIndexed { i, c ->
             if (i > 0) append(" ")
             withStyle(SpanStyle(color = Palette.Rainbow[i % Palette.Rainbow.size])) { append(c) }
         }
-        withStyle(SpanStyle(color = Palette.Fg)) { append(" *") }
+        withStyle(SpanStyle(color = Palette.Fg)) { append(" 𝆯") }
     }
     BasicText(
         text,
@@ -227,39 +233,39 @@ private fun AudioLine(track: Track, pos: State<Long>, cols: Int) {
             add(Span(prefix))
             add(Span(ellipsize(track.name, nameMax)))
             add(Span("] (${formatClock(pos.value)}/${formatClock(dur)}) "))
-            wave.forEachIndexed { i, c -> add(Span(c.toString(), Iridescence.cell(i.toFloat() / waveCols, 0.7f))) }
+            add(Span(wave))
         },
         description = "${track.name}, ${formatClock(pos.value)} de ${formatClock(dur)}",
     )
 }
 
-/** `------#----------`: the playhead; tap or drag to seek. */
+/** `------#----------`: the playhead; tap or drag to seek. Red like every slider. */
 @Composable
 private fun SeekLine(durationMs: Long, pos: State<Long>, cols: Int, enabled: Boolean, onSeek: (Float) -> Unit) {
+    val sel = LocalSelection.current
     var widthPx by remember { mutableIntStateOf(1) }
     val frac = if (durationMs > 0) (pos.value.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val len = cols.coerceAtLeast(8)
-    val hash = if (enabled) Math.round(frac * (len - 1)) else -1
-    val text = buildAnnotatedString {
-        for (i in 0 until len) {
-            if (i == hash) withStyle(SpanStyle(color = Palette.Prompt)) { append("#") }
-            else withStyle(SpanStyle(color = Palette.Dim)) { append("-") }
-        }
-    }
+    val marker = controlColor("seek")
+    val text = sliderBar(cols.coerceAtLeast(8), frac, marker, enabled)
     Column(
         Modifier
             .fillMaxWidth()
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(enabled) {
-                if (enabled) detectTapGestures { onSeek((it.x / widthPx).coerceIn(0f, 1f)) }
+                if (enabled) detectTapGestures(
+                    onPress = { sel.selected = "seek" },
+                    onTap = { onSeek((it.x / widthPx).coerceIn(0f, 1f)) },
+                )
             }
             .pointerInput(enabled) {
-                if (enabled) detectHorizontalDragGestures { change, _ -> onSeek((change.position.x / widthPx).coerceIn(0f, 1f)) }
+                if (enabled) detectHorizontalDragGestures(onDragStart = { sel.selected = "seek" }) { change, _ ->
+                    onSeek((change.position.x / widthPx).coerceIn(0f, 1f))
+                }
             }
             .semantics { contentDescription = "Posição de reprodução, toque ou arraste para buscar" }
             .padding(vertical = 8.dp)
     ) {
         BasicText(text, style = TextStyle(fontFamily = Term.font, fontSize = Term.base))
-        BasicText(">", style = TextStyle(fontFamily = Term.font, fontSize = Term.base, color = Palette.Dim))
+        BasicText(">", style = TextStyle(fontFamily = Term.font, fontSize = Term.base, color = Palette.Fg))
     }
 }

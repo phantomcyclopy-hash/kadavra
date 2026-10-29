@@ -44,30 +44,31 @@ class RenderResult(
 )
 
 /**
- * Two passes, bounded memory: (1) engine -> float32 scratch file while measuring the peak;
- * (2) scratch -> 16-bit PCM WAV. If the peak exceeds [PEAK_CEILING] the whole file is scaled down by one
- * constant gain (never boosted). No dither is applied. Partial outputs are deleted on failure/cancel.
+ * Two passes, bounded memory: (1) the engine writes to a float32 scratch file while the true peak is
+ * measured; (2) scratch -> 16-bit PCM WAV. If the peak exceeds [PEAK_CEILING] the whole file is scaled
+ * down by one constant gain (never boosted). No dither. Partial outputs are deleted on failure/cancel.
+ * [produce] receives the sink and a 0..1 progress callback and returns the number of frames written.
  */
-object PaulstretchRenderer {
+object OfflineRenderer {
     const val PEAK_CEILING = 0.98f
-    private const val STRETCH_SHARE = 0.85f
+    private const val PRODUCE_SHARE = 0.85f
 
     fun render(
-        source: PcmSource,
-        params: PaulstretchParams,
+        channels: Int,
+        sampleRate: Int,
         outWav: File,
         workDir: File,
         onProgress: (Float) -> Unit = {},
         cancelled: () -> Boolean = { false },
+        produce: (SampleSink, (Float) -> Unit) -> Long,
     ): RenderResult {
         workDir.mkdirs()
         val scratchFile = File(workDir, "stretched.f32")
         var ok = false
         try {
-            val ch = source.channels
-            val sink = FloatFileSink(scratchFile, ch)
+            val sink = FloatFileSink(scratchFile, channels)
             try {
-                PaulstretchEngine(params).run(source, sink, { onProgress(it * STRETCH_SHARE) }, cancelled)
+                produce(sink) { onProgress(it * PRODUCE_SHARE) }
             } finally {
                 sink.close()
             }
@@ -75,14 +76,14 @@ object PaulstretchRenderer {
             val peak = sink.peak
             val gain = if (peak > PEAK_CEILING) PEAK_CEILING / peak else 1f
 
-            val totalBytes = frames * ch * 4
+            val totalBytes = frames * channels * 4
             var remaining = totalBytes
             val chunk = ByteArray(1 shl 16)
             val inBuf = ByteBuffer.wrap(chunk).order(ByteOrder.LITTLE_ENDIAN)
             val outChunk = ByteArray((1 shl 16) / 2)
             DataInputStream(BufferedInputStream(FileInputStream(scratchFile), 1 shl 16)).use { input ->
                 BufferedOutputStream(FileOutputStream(outWav), 1 shl 16).use { out ->
-                    out.write(WavFormat.pcm16Header(source.sampleRate, ch, frames))
+                    out.write(WavFormat.pcm16Header(sampleRate, channels, frames))
                     while (remaining > 0) {
                         if (cancelled()) throw ProcessingCancelled()
                         val n = minOf(chunk.size.toLong(), remaining).toInt()
@@ -96,15 +97,31 @@ object PaulstretchRenderer {
                         }
                         out.write(outChunk, 0, samples * 2)
                         remaining -= n
-                        onProgress(STRETCH_SHARE + (1f - STRETCH_SHARE) * (1f - remaining.toFloat() / totalBytes))
+                        onProgress(PRODUCE_SHARE + (1f - PRODUCE_SHARE) * (1f - remaining.toFloat() / totalBytes))
                     }
                 }
             }
             ok = true
-            return RenderResult(frames, source.sampleRate, ch, peak, gain)
+            return RenderResult(frames, sampleRate, channels, peak, gain)
         } finally {
             scratchFile.delete()
             if (!ok) outWav.delete()
         }
+    }
+}
+
+/** Mouton (Paulstretch) front-end for [OfflineRenderer]. */
+object PaulstretchRenderer {
+    const val PEAK_CEILING = OfflineRenderer.PEAK_CEILING
+
+    fun render(
+        source: PcmSource,
+        params: PaulstretchParams,
+        outWav: File,
+        workDir: File,
+        onProgress: (Float) -> Unit = {},
+        cancelled: () -> Boolean = { false },
+    ): RenderResult = OfflineRenderer.render(source.channels, source.sampleRate, outWav, workDir, onProgress, cancelled) { sink, prog ->
+        PaulstretchEngine(params).run(source, sink, prog, cancelled)
     }
 }

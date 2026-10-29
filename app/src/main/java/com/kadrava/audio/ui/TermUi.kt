@@ -1,21 +1,23 @@
 package com.kadrava.audio.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -35,21 +37,40 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** Number of monospace columns that fit the screen width (measured at the root). */
 val LocalTermCols = compositionLocalOf { 40 }
 
-class Span(val text: String, val color: Color = Palette.Fg)
+/** Remembers which button/slider was selected last; only that one is drawn in the highlight colour. */
+class SelectionState {
+    var selected by mutableStateOf<String?>(null)
+}
+
+val LocalSelection = compositionLocalOf { SelectionState() }
+
+/**
+ * PLAIN: fixed colour (white). CONTROL: button/slider part, red, turns to the highlight colour (with a
+ * fade) while it is the last selected control. OPTION: menu entry, white, fades to red while [TermItem.active].
+ */
+enum class SpanKind { PLAIN, CONTROL, OPTION }
+
+class Span(val text: String, val color: Color = Palette.Fg, val kind: SpanKind = SpanKind.PLAIN)
 
 private fun termStyle(size: TextUnit, color: Color = Palette.Fg) =
     TextStyle(fontFamily = Term.font, fontSize = size, color = color)
 
+/** Colour of a control's marker: red normally, highlight colour (fading) while [key] is the last selected. */
+@Composable
+fun controlColor(key: String?): Color {
+    val sel = LocalSelection.current
+    val target = if (key != null && sel.selected == key) Palette.Selected else Palette.Button
+    val c by animateColorAsState(target, tween(300), label = "control")
+    return c
+}
+
 /**
- * One terminal line. When clickable, a green cursor block appears right after the text only while the
- * item is pressed and for a moment after it is activated. Followed by the `>` prompt line unless
- * [separator] is false; the whole thing is the touch target.
+ * One terminal line followed by the `>` prompt line (unless [separator] is false); the whole thing is the
+ * touch target. No cursor block: selection is shown only by the colour change of the item itself.
  */
 @Composable
 fun TermItem(
@@ -59,22 +80,33 @@ fun TermItem(
     separator: Boolean = true,
     size: TextUnit = Term.base,
     description: String? = null,
+    key: String? = null,
+    active: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
-    val scope = rememberCoroutineScope()
+    val sel = LocalSelection.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    var recent by remember { mutableStateOf(false) }
+    val itemKey = key ?: spans.filter { it.kind == SpanKind.CONTROL }.joinToString("|") { it.text }.ifEmpty { null }
     val clickable = onClick != null && enabled
+    LaunchedEffect(pressed) { if (pressed && clickable && itemKey != null) sel.selected = itemKey }
+    val ctrl = controlColor(itemKey)
+    val option by animateColorAsState(if (active) Palette.Button else Palette.Fg, tween(300), label = "option")
     val text = buildAnnotatedString {
-        for (s in spans) withStyle(SpanStyle(color = if (enabled) s.color else Palette.Dim)) { append(s.text) }
-        if (clickable) withStyle(SpanStyle(background = if (pressed || recent) Palette.Cursor else Color.Transparent)) { append(" ") }
+        for (s in spans) {
+            val c = when {
+                !enabled -> Palette.Disabled
+                s.kind == SpanKind.CONTROL -> ctrl
+                s.kind == SpanKind.OPTION -> option
+                else -> s.color
+            }
+            withStyle(SpanStyle(color = c)) { append(s.text) }
+        }
     }
     val m = if (clickable) modifier.clickable(
         interactionSource = src, indication = null, role = Role.Button,
         onClick = {
-            recent = true
-            scope.launch { delay(350); recent = false }
+            if (itemKey != null) sel.selected = itemKey
             onClick?.invoke()
         },
     ) else modifier
@@ -83,28 +115,33 @@ fun TermItem(
             .semantics { if (description != null) contentDescription = description }
     ) {
         BasicText(text, style = termStyle(size))
-        if (separator) BasicText(">", style = termStyle(size, Palette.Dim))
+        if (separator) BasicText(">", style = termStyle(size))
     }
 }
 
-/** ASCII slider: a label/value line and a `------#------` bar line; drag or tap to set. */
+/** `------#------`: dashes red, the `#` marker red until the slider is the last one selected. */
+fun sliderBar(len: Int, fraction: Float, markerColor: Color, enabled: Boolean = true) = buildAnnotatedString {
+    val hash = if (enabled) Math.round(fraction.coerceIn(0f, 1f) * (len - 1)) else -1
+    for (i in 0 until len) {
+        if (i == hash) withStyle(SpanStyle(color = markerColor)) { append("#") }
+        else withStyle(SpanStyle(color = if (enabled) Palette.Button else Palette.Disabled)) { append("-") }
+    }
+}
+
+/** ASCII slider: a label/value line and a bar line; drag or tap to set. */
 @Composable
 fun TermSlider(label: String, valueText: String, fraction: Float, onFraction: (Float) -> Unit) {
     val cols = LocalTermCols.current
+    val sel = LocalSelection.current
+    val key = label.trim()
     var widthPx by remember { mutableIntStateOf(1) }
     val update by rememberUpdatedState(onFraction)
-    var pressing by remember { mutableStateOf(false) }
-    var dragging by remember { mutableStateOf(false) }
+    val marker = controlColor(key)
     val barLen = (cols - 2).coerceAtLeast(8)
     val f = fraction.coerceIn(0f, 1f)
-    val hash = Math.round(f * (barLen - 1))
     val bar = buildAnnotatedString {
         append("  ")
-        for (i in 0 until barLen) {
-            if (i == hash) withStyle(SpanStyle(color = Palette.Prompt)) { append("#") }
-            else withStyle(SpanStyle(color = Palette.Dim)) { append("-") }
-        }
-        withStyle(SpanStyle(background = if (pressing || dragging) Palette.Cursor else Color.Transparent)) { append(" ") }
+        append(sliderBar(barLen, f, marker))
     }
     Column(
         Modifier
@@ -113,26 +150,24 @@ fun TermSlider(label: String, valueText: String, fraction: Float, onFraction: (F
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onPress = { pressing = true; tryAwaitRelease(); pressing = false },
+                    onPress = { sel.selected = key },
                     onTap = { update((it.x / widthPx).coerceIn(0f, 1f)) },
                 )
             }
             .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { dragging = true },
-                    onDragEnd = { dragging = false },
-                    onDragCancel = { dragging = false },
-                ) { change, _ -> update((change.position.x / widthPx).coerceIn(0f, 1f)) }
+                detectHorizontalDragGestures(onDragStart = { sel.selected = key }) { change, _ ->
+                    update((change.position.x / widthPx).coerceIn(0f, 1f))
+                }
             }
             .semantics {
-                contentDescription = label.trim()
+                contentDescription = key
                 stateDescription = valueText
                 progressBarRangeInfo = ProgressBarRangeInfo(f, 0f..1f)
-                setProgress { target -> update(target.coerceIn(0f, 1f)); true }
+                setProgress { target -> sel.selected = key; update(target.coerceIn(0f, 1f)); true }
             }
     ) {
         BasicText(label + " " + valueText, style = termStyle(Term.base))
         BasicText(bar, style = termStyle(Term.base))
-        BasicText(">", style = termStyle(Term.base, Palette.Dim))
+        BasicText(">", style = termStyle(Term.base))
     }
 }
