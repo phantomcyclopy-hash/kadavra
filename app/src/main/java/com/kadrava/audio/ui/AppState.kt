@@ -1,8 +1,6 @@
 package com.kadrava.audio.ui
 
 import com.kadrava.audio.audio.WaveformData
-import com.kadrava.audio.dsp.AnalysisResult
-import com.kadrava.audio.dsp.WindowType
 import java.io.File
 
 class Track(val name: String, val waveform: WaveformData)
@@ -23,14 +21,6 @@ sealed interface ProcessState {
     data class Failed(val message: String) : ProcessState
 }
 
-sealed interface AnalysisState {
-    data object Idle : AnalysisState
-    data class Running(val stage: String, val progress: Float) : AnalysisState
-    /** [playheadMs] is where the playhead was when the analysis started; [source] names what was analysed. */
-    class Done(val result: AnalysisResult, val playheadMs: Long, val source: String) : AnalysisState
-    data class Failed(val message: String) : AnalysisState
-}
-
 data class UiState(
     val load: LoadState = LoadState.Idle,
     val playing: Boolean = false,
@@ -42,13 +32,6 @@ data class UiState(
     val slicesEnabled: Boolean = false,
     val sliceFactor: Int = 8,
     val sliceVariation: Double = 0.3,
-    val eqGains: List<Double> = List(6) { 0.0 },
-    val anFft: Int = 4096,
-    val anWindow: WindowType = WindowType.HANN,
-    val anLog: Boolean = true,
-    val anHold: Boolean = true,
-    val anShowPlayhead: Boolean = false,
-    val analysis: AnalysisState = AnalysisState.Idle,
     val process: ProcessState = ProcessState.Idle,
     /** The processed result loaded into the player for listening (original stays in [load]). */
     val previewTrack: Track? = null,

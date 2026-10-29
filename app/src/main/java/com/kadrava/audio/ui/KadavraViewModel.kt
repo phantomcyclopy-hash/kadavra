@@ -10,14 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.kadrava.audio.audio.DecodeException
 import com.kadrava.audio.audio.PlaybackController
 import com.kadrava.audio.audio.WaveformDecoder
-import com.kadrava.audio.dsp.AnalyzerParams
-import com.kadrava.audio.dsp.EqEngine
-import com.kadrava.audio.dsp.EqParams
 import com.kadrava.audio.dsp.InvalidParamException
-import com.kadrava.audio.dsp.OfflineRenderer
-import com.kadrava.audio.dsp.PaulstretchEngine
-import com.kadrava.audio.dsp.SampleSink
-import com.kadrava.audio.dsp.SpectrumAnalyzer
 import com.kadrava.audio.dsp.LimitException
 import com.kadrava.audio.dsp.PaulstretchParams
 import com.kadrava.audio.dsp.PaulstretchPlanner
@@ -62,12 +55,9 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
     private var procJob: Job? = null
     private var exportJob: Job? = null
     private var previewJob: Job? = null
-    private var analysisJob: Job? = null
-    private var previewUri: Uri? = null
     private var currentUri: Uri? = null
 
     private val workDir: File get() = File(getApplication<Application>().cacheDir, "kadavra-work")
-    private val analysisDir: File get() = File(getApplication<Application>().cacheDir, "kadavra-analysis")
 
     // ---------------------------------------------------------------- import / playback
 
@@ -76,14 +66,12 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         procJob?.cancel()
         exportJob?.cancel()
         previewJob?.cancel()
-        analysisJob?.cancel()
-        previewUri = null
         stopTicker()
         player.release()
         currentUri = uri
         _pos.value = 0
         _ui.update {
-            it.copy(load = LoadState.Loading(null, "decodificando"), playing = false, message = null, process = ProcessState.Idle, previewTrack = null, previewLoading = false, analysis = AnalysisState.Idle)
+            it.copy(load = LoadState.Loading(null, "decodificando"), playing = false, message = null, process = ProcessState.Idle, previewTrack = null, previewLoading = false)
         }
         loadJob = viewModelScope.launch {
             try {
@@ -180,7 +168,7 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val uri = Uri.fromFile(done.file)
                 val wf = WaveformDecoder.decode(getApplication(), uri)
-                preparePlayer(uri) { previewUri = uri; _ui.update { it.copy(previewTrack = Track("resultado", wf), previewLoading = false) } }
+                preparePlayer(uri) { _ui.update { it.copy(previewTrack = Track("resultado", wf), previewLoading = false) } }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -198,19 +186,16 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         stopTicker()
         player.release()
         _pos.value = 0
-        previewUri = null
         _ui.update { it.copy(previewTrack = null, previewLoading = false, playing = false) }
         preparePlayer(uri) {}
     }
 
     /** Stops everything, deletes temporary files and clears the session (the original file is untouched). */
     fun endSession() {
-        loadJob?.cancel(); procJob?.cancel(); exportJob?.cancel(); previewJob?.cancel(); analysisJob?.cancel()
+        loadJob?.cancel(); procJob?.cancel(); exportJob?.cancel(); previewJob?.cancel()
         stopTicker()
         player.release()
         currentUri = null
-        previewUri = null
-        try { analysisDir.deleteRecursively() } catch (_: Exception) {}
         _pos.value = 0
         try { workDir.deleteRecursively() } catch (_: Exception) {}
         _ui.value = UiState()
@@ -236,67 +221,27 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
     private fun idleIfFinished(p: ProcessState): ProcessState =
         if (p is ProcessState.Done || p is ProcessState.Failed) ProcessState.Idle else p
 
-    fun setEqGain(i: Int, db: Double) = _ui.update {
-        it.copy(eqGains = it.eqGains.toMutableList().also { g -> g[i] = db }, process = idleIfFinished(it.process))
-    }
-    fun resetEq() = _ui.update { it.copy(eqGains = List(6) { 0.0 }, process = idleIfFinished(it.process)) }
-
     fun startMouton() {
-        val s = _ui.value
-        val params = PaulstretchParams(s.stretch, s.windowSeconds, s.seed)
-        startOffline(
-            tag = "mouton_${String.format(java.util.Locale.US, "%.1f", params.stretch)}x",
-            stage = "mouton (STFT)",
-            check = { fr, ch, sr, free -> PaulstretchPlanner.plan(params, fr, ch, sr, free) },
-            produce = { src, sink, prog, canc -> PaulstretchEngine(params).run(src, sink, prog, canc) },
-        )
-    }
-
-    fun startMose() {
-        val s = _ui.value
-        val eq = EqParams.default.withGains(s.eqGains)
-        if (eq.isFlat) {
-            _ui.update { it.copy(message = "mose: todas as bandas em 0 dB; não há o que processar.") }
-            return
-        }
-        startOffline(
-            tag = "mose",
-            stage = "mose (equalizador)",
-            check = { fr, ch, sr, free -> PaulstretchPlanner.plan(PaulstretchParams(stretch = 1.0), fr, ch, sr, free) },
-            produce = { src, sink, prog, canc -> EqEngine(eq).run(src, sink, prog, canc) },
-            note = { sr ->
-                val sk = EqEngine.skipped(eq, sr).size
-                if (sk == 0) "" else " · $sk banda(s) acima de 0,45×taxa ignorada(s)"
-            },
-        )
-    }
-
-    private fun startOffline(
-        tag: String,
-        stage: String,
-        check: (frames: Long, channels: Int, sampleRate: Int, freeBytes: Long) -> Unit,
-        produce: (PcmSource, SampleSink, (Float) -> Unit, () -> Boolean) -> Long,
-        note: (sampleRate: Int) -> String = { "" },
-    ) {
         val s = _ui.value
         val ready = s.load as? LoadState.Ready ?: return
         val uri = currentUri ?: return
         if (s.process is ProcessState.Running || s.process is ProcessState.Exporting) return
+        val params = PaulstretchParams(s.stretch, s.windowSeconds, s.seed)
         val slices: SliceParams? = if (s.slicesEnabled) SliceParams(factor = s.sliceFactor, sizeVariation = s.sliceVariation, seed = s.seed) else null
         if (s.previewTrack != null || s.previewLoading) listenOriginal()
         val baseName = ready.track.name.substringBeforeLast('.', ready.track.name)
         val started = SystemClock.elapsedRealtime()
         var lastP = -1f
-        fun report(st: String, p: Float) {
+        fun report(stage: String, p: Float) {
             if (p - lastP >= 0.005f || p >= 1f) {
                 lastP = p
-                _ui.update { if (it.process is ProcessState.Running) it.copy(process = ProcessState.Running(st, p, started)) else it }
+                _ui.update { if (it.process is ProcessState.Running) it.copy(process = ProcessState.Running(stage, p, started)) else it }
             }
         }
         _ui.update { it.copy(process = ProcessState.Running("preparando", 0f, started), message = null) }
         procJob = viewModelScope.launch {
             try {
-                val done = runOffline(uri, slices, baseName, tag, stage, check, produce, note, ::report)
+                val done = runMouton(uri, params, slices, baseName, ::report)
                 _ui.update { it.copy(process = done) }
             } catch (e: CancellationException) {
                 _ui.update { it.copy(process = ProcessState.Idle, message = "processamento cancelado.") }
@@ -321,12 +266,8 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(process = ProcessState.Idle, message = "cancelando...") }
     }
 
-    private suspend fun runOffline(
-        uri: Uri, slices: SliceParams?, baseName: String, tag: String, stage: String,
-        check: (Long, Int, Int, Long) -> Unit,
-        produce: (PcmSource, SampleSink, (Float) -> Unit, () -> Boolean) -> Long,
-        note: (Int) -> String,
-        report: (String, Float) -> Unit,
+    private suspend fun runMouton(
+        uri: Uri, params: PaulstretchParams, slices: SliceParams?, baseName: String, report: (String, Float) -> Unit,
     ): ProcessState.Done = withContext(Dispatchers.IO) {
         val job = this.coroutineContext[Job]!!
         val cancelled = { !job.isActive }
@@ -337,90 +278,31 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         val out = File(work, "output.wav")
         var ok = false
         try {
+            params.validate()
             val wf = FileOutputStream(pcm).buffered(1 shl 16).use { sink ->
                 WaveformDecoder.decode(getApplication(), uri, pcmSink = sink) { p -> report("decodificando PCM", p * 0.2f) }
             }
             if (wf.frames <= 0L) throw InvalidParamException("O áudio decodificado está vazio.")
-            check(wf.frames, wf.channels, wf.sampleRate, work.usableSpace)
+            PaulstretchPlanner.plan(params, wf.frames, wf.channels, wf.sampleRate, work.usableSpace)
             val r = RawPcmFileSource(pcm, wf.sampleRate, wf.channels).use { base ->
                 slices?.validate()
                 val src: PcmSource = if (slices != null) SlicedPcmSource(base, Slicer.plan(base.frames, base.sampleRate, slices)) else base
-                OfflineRenderer.render(wf.channels, wf.sampleRate, out, work, { p ->
-                    report(if (p < 0.85f) stage else "gravando WAV", 0.2f + 0.8f * p)
-                }, cancelled) { sink, prog -> produce(src, sink, prog, cancelled) }
+                PaulstretchRenderer.render(src, params, out, work, { p ->
+                    report(if (p < 0.85f) "mouton (STFT)" else "gravando WAV", 0.2f + 0.8f * p)
+                }, cancelled)
             }
             val secs = r.outputFrames.toDouble() / r.sampleRate
             val outPeak = minOf(r.peak, PaulstretchRenderer.PEAK_CEILING)
             val sliceNote = if (slices != null) " · picotado em ${minOf(slices.factor.toLong(), wf.frames)} slices e embaralhado (semente ${slices.seed})" else ""
-            val summary = "${formatTime((secs * 1000).toLong())} · ${r.sampleRate} Hz · ${r.channels} ch · WAV PCM 16 bits · pico ${dbfsText(outPeak)} dBFS" + sliceNote + note(r.sampleRate) +
+            val summary = "${formatTime((secs * 1000).toLong())} · ${r.sampleRate} Hz · ${r.channels} ch · WAV PCM 16 bits · pico ${dbfsText(outPeak)} dBFS" + sliceNote +
                 if (r.gain < 1f) " (ganho reduzido de ${dbfsText(r.peak)} dBFS para evitar clipping)" else ""
+            val name = "${baseName}_mouton_${String.format(java.util.Locale.US, "%.1f", params.stretch)}x.wav"
             ok = true
-            ProcessState.Done(out, summary, "${baseName}_$tag.wav")
+            ProcessState.Done(out, summary, name)
         } finally {
             pcm.delete()
             if (!ok) out.delete()
         }
-    }
-
-    // ---------------------------------------------------------------- Cindy (analysis)
-
-    fun setAnFft(v: Int) = _ui.update { it.copy(anFft = v) }
-    fun cycleAnWindow() = _ui.update { it.copy(anWindow = it.anWindow.next()) }
-    fun toggleAnLog() = _ui.update { it.copy(anLog = !it.anLog) }
-    fun toggleAnHold() = _ui.update { it.copy(anHold = !it.anHold) }
-    fun toggleAnView() = _ui.update { it.copy(anShowPlayhead = !it.anShowPlayhead) }
-
-    fun startAnalysis() {
-        val s = _ui.value
-        if (s.load !is LoadState.Ready || s.previewLoading || s.analysis is AnalysisState.Running) return
-        val uri = previewUri ?: currentUri ?: return
-        val label = if (s.previewTrack != null) "resultado" else "original"
-        val params = AnalyzerParams(s.anFft, s.anWindow)
-        val playMs = _pos.value
-        var lastP = -1f
-        fun report(st: String, p: Float) {
-            if (p - lastP >= 0.01f || p >= 1f) {
-                lastP = p
-                _ui.update { if (it.analysis is AnalysisState.Running) it.copy(analysis = AnalysisState.Running(st, p)) else it }
-            }
-        }
-        _ui.update { it.copy(analysis = AnalysisState.Running("decodificando PCM", 0f)) }
-        analysisJob = viewModelScope.launch {
-            try {
-                val res = withContext(Dispatchers.IO) {
-                    val job = this.coroutineContext[Job]!!
-                    val dir = analysisDir
-                    dir.deleteRecursively(); dir.mkdirs()
-                    val pcm = File(dir, "analysis.pcm")
-                    try {
-                        val wf = FileOutputStream(pcm).buffered(1 shl 16).use { sink ->
-                            WaveformDecoder.decode(getApplication(), uri, pcmSink = sink) { p -> report("decodificando PCM", p * 0.3f) }
-                        }
-                        if (wf.frames <= 0L) throw InvalidParamException("O áudio decodificado está vazio.")
-                        RawPcmFileSource(pcm, wf.sampleRate, wf.channels).use { src ->
-                            SpectrumAnalyzer.analyze(src, params, playMs * wf.sampleRate / 1000, { p -> report("analisando", 0.3f + 0.7f * p) }, { !job.isActive })
-                        }
-                    } finally { pcm.delete() }
-                }
-                _ui.update { it.copy(analysis = AnalysisState.Done(res, playMs, label)) }
-            } catch (e: CancellationException) {
-                _ui.update { it.copy(analysis = AnalysisState.Idle, message = "análise cancelada.") }
-                throw e
-            } catch (e: ProcessingCancelled) {
-                _ui.update { it.copy(analysis = AnalysisState.Idle, message = "análise cancelada.") }
-            } catch (e: DecodeException) {
-                _ui.update { it.copy(analysis = AnalysisState.Failed(e.message ?: "Falha ao decodificar.")) }
-            } catch (e: InvalidParamException) {
-                _ui.update { it.copy(analysis = AnalysisState.Failed(e.message ?: "Parâmetros inválidos.")) }
-            } catch (e: Exception) {
-                _ui.update { it.copy(analysis = AnalysisState.Failed("Falha na análise: ${e.message ?: e.javaClass.simpleName}.")) }
-            }
-        }
-    }
-
-    fun cancelAnalysis() {
-        if (_ui.value.analysis !is AnalysisState.Running) return
-        analysisJob?.cancel()
     }
 
     // ---------------------------------------------------------------- export
@@ -501,8 +383,8 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         stopTicker()
-        loadJob?.cancel(); procJob?.cancel(); exportJob?.cancel(); previewJob?.cancel(); analysisJob?.cancel()
+        loadJob?.cancel(); procJob?.cancel(); exportJob?.cancel(); previewJob?.cancel()
         player.release()
-        try { workDir.deleteRecursively(); analysisDir.deleteRecursively() } catch (_: Exception) {}
+        try { workDir.deleteRecursively() } catch (_: Exception) {}
     }
 }

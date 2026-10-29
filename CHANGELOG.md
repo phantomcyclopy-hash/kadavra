@@ -1,10 +1,4 @@
 # Changelog
-## 0.4.0
-- Cindy: analisador espectral FFT (janelas, pico/RMS/crest, eixo log/linear, peak-hold, instantâneo no playhead) com gráfico ASCII.
-- Mose: equalizador de 6 bandas biquad, offline, com Picotador/Embaralhador opcional.
-- OfflineRenderer genérico (Mouton e Mose); runner de processamento unificado no ViewModel.
-- Testes: EqualizerTest, SpectrumAnalyzerTest. Não verificado em build.
-
 ## 0.3.0
 - Interface de terminal (DejaVu Sans Mono), cabeçalho arco-íris, cursor de toque, nomes novos (Mouton etc.).
 - Picotador + Embaralhador (Slicer, SlicedPcmSource) integrado ao Mouton; pré-escuta do resultado; miniforma de onda; linha de busca.

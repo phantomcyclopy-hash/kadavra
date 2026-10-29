@@ -109,11 +109,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
                         onClick = { vm.selectEngine(e) },
                         description = e.name + if (e.implemented) "" else ", indisponível",
                     )
-                    if (ui.selectedEngine == e.id) when (e.id) {
-                        "mouton" -> MoutonPanel(ui, original?.waveform, vm)
-                        "mose" -> MosePanel(ui, original?.waveform, vm)
-                        "cindy" -> CindyPanel(ui, active?.waveform?.sampleRate, active != null && !ui.previewLoading, vm)
-                    }
+                    if (e.id == "mouton" && ui.selectedEngine == "mouton") MoutonPanel(ui, original?.waveform, vm)
                 }
 
                 // import
