@@ -39,6 +39,25 @@ object AsciiWaveformRenderer {
         return out
     }
 
+    /**
+     * One-line mini waveform: each column's peak (normalised to the loudest column, sqrt-compressed so
+     * quiet passages stay visible) picks a character from [AsciiRamp]; silence is '.'.
+     */
+    fun renderLine(peaks: FloatArray, cols: Int): String {
+        require(cols > 0)
+        val col = columnPeaks(peaks, cols)
+        var mx = 0f
+        for (v in col) if (v > mx) mx = v
+        val n = AsciiRamp.CHARS.length
+        val sb = StringBuilder(cols)
+        for (v in col) {
+            val a = if (mx > 1e-6f) (v / mx).coerceIn(0f, 1f) else 0f
+            val idx = if (a <= 0f) 1 else (1 + (kotlin.math.sqrt(a) * (n - 2)).roundToInt()).coerceIn(1, n - 1)
+            sb.append(AsciiRamp.CHARS[idx])
+        }
+        return sb.toString()
+    }
+
     fun render(peaks: FloatArray, cols: Int, rows: Int): AsciiGrid {
         require(cols > 0 && rows > 0) { "cols and rows must be positive" }
         val chars = CharArray(cols * rows) { ' ' }

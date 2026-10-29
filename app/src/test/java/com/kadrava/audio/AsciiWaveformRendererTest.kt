@@ -46,4 +46,17 @@ class AsciiWaveformRendererTest {
         assertTrue(g.intensity.all { it.isFinite() })
         AsciiWaveformRenderer.render(FloatArray(0), 4, 5)
     }
+
+    @Test fun lineHasRequestedLengthAndOnlyRampChars() {
+        val l = AsciiWaveformRenderer.renderLine(FloatArray(500) { (it % 11) / 11f }, 17)
+        assertEquals(17, l.length)
+        assertTrue(l.all { it in AsciiRamp.CHARS && it != ' ' })
+    }
+
+    @Test fun lineSilenceIsDotsAndLoudestColumnIsDensest() {
+        assertEquals("........", AsciiWaveformRenderer.renderLine(FloatArray(64), 8))
+        val l = AsciiWaveformRenderer.renderLine(floatArrayOf(0.1f, 0.5f, 1f, 0.2f), 4)
+        assertEquals('@', l[2])
+        assertTrue(AsciiRamp.CHARS.indexOf(l[1]) > AsciiRamp.CHARS.indexOf(l[0]))
+    }
 }
