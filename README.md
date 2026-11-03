@@ -1,0 +1,78 @@
+# Kadavra (v0.7.0)
+
+Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
+Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.
+
+## Status (honest)
+- **v0.4.1 compiled, passed its tests and ran on the device.** Everything after it (0.5.0 – 0.7.0) was written
+  without a build: expect compile errors on the first run of the GitHub Action; send the `e:` lines.
+- Not verified yet: sound quality of Safo/Mose by ear, real-time latency and glitches of the live player,
+  memory/time on the A55, how the static screen fits small phones.
+
+## Interface rules
+- Single static screen (no scrolling), pure black, DejaVu Sans Mono (third_party/DejaVu-LICENSE.txt), all text in English.
+- Layout, top to bottom: logo + `K a d a v r a 𝆯` + version · engine selector `[<] Name n/N [>]` · the module
+  (pages and sub-pages with `[<]` `[>]`, controls in a 3-column grid, never extending downwards) ·
+  `[Process] [Preview] [Live]` · one status line · `$ [Import] [Eject]` · `= [name]` / `= [Empty]` ·
+  `[Listen] [Reintegrate]` · `[Play] [Pause] [Rewind]` · 16-dash seek bar + typeable time ·
+  fixed bottom bar `.:[Export].:` (nothing below it).
+- Colours: everything white except the logo, the 7 title letters and the buttons/sliders (red). Only the last
+  selected button/slider fades to white. The engine name has its rainbow colour and glows while it works.
+- Sliders: 10 dashes (grid) or 18 (wide); every value is typeable (any number, clamped to the valid range).
+  The Safo loop region uses wide sliders with `m:ss.mmm` times and `[-]` `[+]` nudges of 0.1 s.
+- No explanatory prose anywhere: only controls, readouts and short status/error lines.
+
+## Logo
+12 dots. Rotation speed is eased (never cut): slow counter-clockwise while audio is loaded, faster clockwise
+while processing (and it reverses smoothly), winding down to rest. While audio plays, colours intensify and each
+dot's rise/fall and tremble grow with the loudness; the loudness is the file's peak envelope at the playhead
+(or the live output level), with a fixed default sensitivity. While processing with measurable progress, dots light
+up whole, one per twelfth. With "remove animations" on, it stays still.
+
+## Engines
+| Name | What | State |
+|---|---|---|
+| Mouton | Paulstretch-style spectral stretch (STFT, random phase), slicer/shuffler | done (compiled in 0.2.0) |
+| Safo | Granular synth modelled on The Secret Laboratory's Grainstorm, **live and offline** | written, unverified |
+| Mose | 6-band biquad EQ, slicer/shuffler | written, unverified |
+| Wagner · Heisenberg · Guglielmo · Velazquez | reverb · delay+distortion · noise/drone · image to sound | not implemented (`(n/a)`) |
+
+Cindy (analyzer) was abandoned; Vlad was merged into Heisenberg.
+
+### Safo vs. the original Grainstorm
+Reference: https://thesecretlaboratory.com/apps/grainstorm/instructions (read for v0.7.0). Implemented, following
+its documented behaviour: GRAINSIZE 5 ms–1 s, DENSITY 1–500 Hz, DEVIATION (random delay of each grain within
+`deviation × sr / density` samples), RND READ (random read offset), PANNING (random L/R gain), ENV CYCLES and
+ENV PHASE, PITCH, GLISS, REVERSE (probability), GRAINS/SILENCE (play N grains, skip M), loop START/END, SPEED
+(1.0 = original), three loop modes (wrap, ping-pong with reversed grains, ping-pong), ENV1 shapes, real-time
+playback with live parameter changes. Extras from other tools: S&H, spread/jitter, decay/ramp, smoothing filter,
+Magic effects (chorus, tremolo, Haas, phased delay, vibrato), reverb with freeze, probability and vector-field
+position modes.
+**Not implemented from the original:** 4 simultaneous tracks, phase vocoder / cross synthesis, LFOs, envelope
+followers, the effect rack (SSB, vocoder, convolution reverb, compressor, delays…), tape mode, other grain
+envelopes (ENV2), grain-by-grain effects, recording/loading presets. "Exactly like Grainstorm" is a multi-step goal.
+
+Real-time: `[Live]` decodes the loaded audio once to a cache file, then a worker thread renders 1024-frame blocks
+and streams them to an `AudioTrack` (float, stereo). The status line shows LOAD (render time / block time) and
+L/R levels. `[Process]`/`[Preview]` render offline (preview = at most 8 s of output for Safo, the first 4 s of
+input for Mouton, 10 s for Mose).
+
+### Reintegrate
+`[Reintegrate]` copies the result to a lasting cache file and loads it as the current audio, as many times as you
+like; the previous material and result are discarded; your imported file is never touched. `[Eject]` removes
+all audio and temporary files.
+
+## Build
+JDK 17, Android SDK 34, Gradle 8.7. Without a PC: push to GitHub; `.github/workflows/build.yml` runs the tests and
+builds the debug APK (Actions > Artifacts). Versions: AGP 8.5.2, Kotlin 2.0.20, Compose BOM 2024.09.00,
+activity-compose 1.9.2, lifecycle 2.8.6, coroutines 1.8.1, JUnit 4.13.2. Release: create a keystore, configure
+`signingConfigs` through local properties (never commit it), `./gradlew assembleRelease`.
+
+## Limits
+Input ≤ 2 h, output ≤ 1 h and ≤ 1.5 GB, mono/stereo only, 16-bit WAV out (no MP3: Android has no MP3 encoder),
+peaks above 0.98 are lowered by one gain (never boosted), no dither.
+
+## Roadmap
+1. Make 0.7.0 compile and pass its tests; fix what the device shows.
+2. Safo: ENV page (ENV2), LFOs, envelope followers; then the FX rack; then phase vocoder; then more tracks.
+3. Mose/Mouton: live monitoring; Heisenberg, Wagner, Guglielmo, Velazquez.
