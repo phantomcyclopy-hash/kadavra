@@ -153,7 +153,8 @@ class HeisenbergFx(private val sr: Int, initial: HeisenbergParams) {
             }
             DistShape.OFF -> x
         }
-        if (c.shape == DistShape.ASYM) {   // asymmetric shaping adds DC: remove it
+        if (c.shape == DistShape.ASYM) {   // asymmetric shaping adds DC: remove it (0.9 leaves headroom for the shift)
+            y *= 0.9f
             val out = y - dcX[ch] + 0.995f * dcY[ch]
             dcX[ch] = y; dcY[ch] = out
             y = out

@@ -1,11 +1,12 @@
-# Kadavra (v0.8.0)
+# Kadavra (v0.8.1)
 
 Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
 Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.
 
 ## Status (honest)
-- **v0.4.1 compiled, passed its tests and ran on the device.** Everything after it (0.5.0 – 0.8.0) was written
-  without a build: expect compile errors on the first run of the GitHub Action; send the `e:` lines.
+- **v0.4.1 ran on the device.** The 0.8.0 build **compiled completely** (Safo live engine, static UI, Heisenberg) and 98 of
+  its 99 unit tests passed; the one failure (asym distortion slightly out of range) is fixed in 0.8.1, which has not been
+  run yet. Nothing has been run on the device since 0.4.1.
 - Not verified yet: sound quality of Safo/Mose by ear, real-time latency and glitches of the live player,
   memory/time on the A55, how the static screen fits small phones.
 

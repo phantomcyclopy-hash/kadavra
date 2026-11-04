@@ -1,4 +1,7 @@
 # Changelog
+## 0.8.1
+- Heisenberg: `asym` distortion output now stays within +-1 after DC removal (0.9 headroom). 0.8.0 compiled; 98/99 tests passed.
+
 ## 0.8.0
 - Heisenberg: delay (time, feedback, mix, ping-pong, tail, feedback low/high-pass, feedback pitch shift) and distortion (soft, hard, asym, fold, crush with bits/rate, drive, mix, level, pre/post), with the slicer/shuffler; `HeisenbergFx` is a streaming per-sample effect.
 - Multitrack goal documented in the README (design only).
