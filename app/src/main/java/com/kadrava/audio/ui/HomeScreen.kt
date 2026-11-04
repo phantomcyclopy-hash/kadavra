@@ -80,6 +80,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
         "mouton" -> moutonSpec(ui, original?.waveform, vm)
         "mose" -> moseSpec(ui, original?.waveform, vm)
         "safo" -> safoSpec(ui, original?.waveform, vm)
+        "heisenberg" -> heisenbergSpec(ui, original?.waveform, vm)
         else -> EngineSpec(emptyList(), false, null, {}, {})
     }
     val done = (ui.process as? ProcessState.Done) ?: (ui.process as? ProcessState.Exporting)?.done

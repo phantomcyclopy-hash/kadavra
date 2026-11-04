@@ -13,6 +13,8 @@ import com.kadrava.audio.audio.SafoLive
 import com.kadrava.audio.audio.WaveformDecoder
 import com.kadrava.audio.dsp.EqEngine
 import com.kadrava.audio.dsp.EqParams
+import com.kadrava.audio.dsp.HeisenbergEngine
+import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.InvalidParamException
 import com.kadrava.audio.dsp.LimitException
 import com.kadrava.audio.dsp.OfflinePlanner
@@ -317,6 +319,9 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         live?.setParams(_ui.value.safo)
     }
 
+    fun heis(f: (HeisenbergParams) -> HeisenbergParams) =
+        _ui.update { it.copy(heis = f(it.heis), process = idleIfFinished(it.process)) }
+
     fun setLiveFreeze(on: Boolean) {
         _ui.update { it.copy(liveFrozen = on) }
         live?.frozen = on
@@ -352,6 +357,23 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
                 val sk = EqEngine.skipped(eq, sr).size
                 if (sk == 0) "" else " $sk band(s) above 0.45 x rate skipped"
             },
+            preview = preview,
+            truncateInputSeconds = PREVIEW_IN_MOSE_S,
+        )
+    }
+
+    fun startHeisenberg(preview: Boolean = false) {
+        val hp = _ui.value.heis
+        if (hp.isNoOp) {
+            _ui.update { it.copy(message = "heisenberg: mix 0 and shape off, nothing to do") }
+            return
+        }
+        startOffline(
+            tag = "heisenberg" + if (preview) "_preview" else "",
+            stage = "heisenberg",
+            check = { fr, ch, sr, free -> OfflinePlanner.plan(fr, fr + hp.tailFrames(sr), 2, sr, free) },
+            produce = { src, sink, prog, canc -> HeisenbergEngine(hp).run(src, sink, prog, canc) },
+            outChannels = 2,
             preview = preview,
             truncateInputSeconds = PREVIEW_IN_MOSE_S,
         )

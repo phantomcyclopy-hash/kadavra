@@ -1,6 +1,7 @@
 package com.kadrava.audio.ui
 
 import com.kadrava.audio.audio.WaveformData
+import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.SafoParams
 import java.io.File
 
@@ -46,6 +47,7 @@ data class UiState(
     val sliceVariation: Double = 0.3,
     val eqGains: List<Double> = List(6) { 0.0 },
     val safo: SafoParams = SafoParams(),
+    val heis: HeisenbergParams = HeisenbergParams(),
     val live: LiveState = LiveState.Off,
     val liveFrozen: Boolean = false,
     val process: ProcessState = ProcessState.Idle,

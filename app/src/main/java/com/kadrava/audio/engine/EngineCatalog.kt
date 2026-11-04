@@ -9,7 +9,7 @@ object EngineCatalog {
         EngineInfo("safo", "Safo", "granular synthesis modelled on Grainstorm, live and offline", true),
         EngineInfo("mose", "Mose", "6-band equalizer (biquad)", true),
         EngineInfo("wagner", "Wagner", "convolution reverb and delay networks", false),
-        EngineInfo("heisenberg", "Heisenberg", "delay and distortion", false),
+        EngineInfo("heisenberg", "Heisenberg", "delay with filtered, pitch-shifting feedback, plus distortion", true),
         EngineInfo("guglielmo", "Guglielmo", "noise and drone", false),
         EngineInfo("velazquez", "Velazquez", "image to sound", false),
     )

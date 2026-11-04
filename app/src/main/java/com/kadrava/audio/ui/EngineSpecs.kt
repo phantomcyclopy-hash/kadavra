@@ -8,7 +8,9 @@ import com.kadrava.audio.dsp.BandParam
 import com.kadrava.audio.dsp.BandType
 import com.kadrava.audio.dsp.EnvShape
 import com.kadrava.audio.dsp.EqEngine
+import com.kadrava.audio.dsp.DistShape
 import com.kadrava.audio.dsp.EqParams
+import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.LoopMode
 import com.kadrava.audio.dsp.MagicEffect
 import com.kadrava.audio.dsp.OfflinePlanner
@@ -241,5 +243,69 @@ fun safoSpec(ui: UiState, wf: WaveformData?, vm: KadavraViewModel): EngineSpec {
         onProcess = { vm.startSafo() },
         onPreview = { vm.startSafo(preview = true) },
         showLive = true,
+    )
+}
+
+/** Heisenberg: delay (with filtered, pitch-shifting feedback and ping-pong) and distortion. */
+@Composable
+fun heisenbergSpec(ui: UiState, wf: WaveformData?, vm: KadavraViewModel): EngineSpec {
+    val free = LocalContext.current.cacheDir.usableSpace
+    val hp = ui.heis
+    val b = busy(ui)
+    val estimate = remember(hp, wf, free) {
+        if (wf == null) null else runCatching {
+            hp.validate()
+            OfflinePlanner.plan(wf.frames, wf.frames + hp.tailFrames(wf.sampleRate), 2, wf.sampleRate, free, wf.frames * wf.channels * 2L)
+        }
+    }
+    fun slider(label: String, text: String, frac: Float, set: (Float) -> Unit, type: (Double) -> Unit) = SliderCell(label, text, frac, set, type)
+    fun unit(label: String, v: Double, f: (HeisenbergParams, Double) -> HeisenbergParams) =
+        slider(label, "%.2f".format(v), v.toFloat(), { x -> vm.heis { f(it, r2(x.toDouble())) } }, { t -> vm.heis { f(it, t.coerceIn(0.0, 1.0)) } })
+
+    val delay1 = listOf<Cell>(
+        slider("TIME", "%.0f ms".format(hp.delayMs), logFrac(hp.delayMs, 1.0, 2000.0),
+            { f -> vm.heis { it.copy(delayMs = round(logVal(f, 1.0, 2000.0))) } },
+            { v -> vm.heis { it.copy(delayMs = v.coerceIn(1.0, 2000.0)) } }),
+        slider("FEEDBACK", "%.2f".format(hp.feedback), linFrac(hp.feedback, 0.0, 0.95),
+            { f -> vm.heis { it.copy(feedback = r2(linVal(f, 0.0, 0.95))) } },
+            { v -> vm.heis { it.copy(feedback = v.coerceIn(0.0, 0.95)) } }),
+        unit("MIX", hp.delayMix) { p, v -> p.copy(delayMix = v) },
+        ButtonCell("PING", if (hp.pingPong) "on" else "off", !b, "ping") { vm.heis { it.copy(pingPong = !it.pingPong) } },
+        slider("TAIL", "%.1f s".format(hp.tailSeconds), linFrac(hp.tailSeconds, 0.0, 10.0),
+            { f -> vm.heis { it.copy(tailSeconds = r1(linVal(f, 0.0, 10.0))) } },
+            { v -> vm.heis { it.copy(tailSeconds = v.coerceIn(0.0, 10.0)) } }),
+        slider("SHIFT", "%+.1f st".format(hp.shift), linFrac(hp.shift, -12.0, 12.0),
+            { f -> vm.heis { it.copy(shift = r1(linVal(f, -12.0, 12.0))) } },
+            { v -> vm.heis { it.copy(shift = v.coerceIn(-12.0, 12.0)) } }),
+    )
+    val delay2 = listOf<Cell>(
+        slider("FB LOW", if (hp.fbLowHz >= 19999.0) "off" else "%.0f Hz".format(hp.fbLowHz), 1f - logFrac(hp.fbLowHz, 200.0, 20000.0),
+            { f -> vm.heis { it.copy(fbLowHz = if (f <= 0.01f) 20000.0 else round(logVal(1f - f, 200.0, 20000.0))) } },
+            { v -> vm.heis { it.copy(fbLowHz = v.coerceIn(200.0, 20000.0)) } }),
+        slider("FB HIGH", if (hp.fbHighHz <= 20.5) "off" else "%.0f Hz".format(hp.fbHighHz), logFrac(hp.fbHighHz, 20.0, 2000.0),
+            { f -> vm.heis { it.copy(fbHighHz = if (f <= 0.01f) 20.0 else round(logVal(f, 20.0, 2000.0))) } },
+            { v -> vm.heis { it.copy(fbHighHz = v.coerceIn(20.0, 2000.0)) } }),
+    )
+    val dist = listOf<Cell>(
+        ButtonCell("SHAPE", hp.shape.label, !b, "shape") { vm.heis { it.copy(shape = it.shape.next()) } },
+        unit("DRIVE", hp.drive) { p, v -> p.copy(drive = v) },
+        unit("MIX", hp.distMix) { p, v -> p.copy(distMix = v) },
+        slider("LEVEL", "%+.1f dB".format(hp.levelDb), linFrac(hp.levelDb, -24.0, 12.0),
+            { f -> vm.heis { it.copy(levelDb = r1(linVal(f, -24.0, 12.0))) } },
+            { v -> vm.heis { it.copy(levelDb = v.coerceIn(-24.0, 12.0)) } }),
+        slider("BITS", "${hp.bits}", linFrac(hp.bits.toDouble(), 1.0, 16.0),
+            { f -> vm.heis { it.copy(bits = linVal(f, 1.0, 16.0).roundToInt().coerceIn(1, 16)) } },
+            { v -> vm.heis { it.copy(bits = v.roundToInt().coerceIn(1, 16)) } }),
+        slider("RATE", "${hp.rate}", linFrac(hp.rate.toDouble(), 1.0, 64.0),
+            { f -> vm.heis { it.copy(rate = linVal(f, 1.0, 64.0).roundToInt().coerceIn(1, 64)) } },
+            { v -> vm.heis { it.copy(rate = v.roundToInt().coerceIn(1, 64)) } }),
+        ButtonCell("ORDER", if (hp.distAfter) "post" else "pre", !b, "order") { vm.heis { it.copy(distAfter = !it.distAfter) } },
+    )
+    return EngineSpec(
+        pages = listOf(ModulePage("DELAY", listOf(delay1, delay2)), ModulePage("DIST", listOf(dist)), slicesPage(ui, vm)),
+        canProcess = estimate?.isSuccess == true && !hp.isNoOp,
+        problem = estimate?.exceptionOrNull()?.message ?: if (hp.isNoOp) "mix 0 and shape off: nothing to do" else null,
+        onProcess = { vm.startHeisenberg() },
+        onPreview = { vm.startHeisenberg(preview = true) },
     )
 }
