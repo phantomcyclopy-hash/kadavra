@@ -1,4 +1,9 @@
 # Changelog
+## 0.8.0
+- Heisenberg: delay (time, feedback, mix, ping-pong, tail, feedback low/high-pass, feedback pitch shift) and distortion (soft, hard, asym, fold, crush with bits/rate, drive, mix, level, pre/post), with the slicer/shuffler; `HeisenbergFx` is a streaming per-sample effect.
+- Multitrack goal documented in the README (design only).
+- Not verified in a build.
+
 ## 0.7.0
 - UI: single static screen, modules extend sideways (pages/sub-pages, 3-column grid), fixed `.:[Export].:` bar, all text in English, no prose, `[Empty]`, `[Eject]`, logo beside the title; removed Logout, the bars above the version and the mini waveform.
 - Logo: eased rotation (CCW slow with audio, CW while processing), loudness-reactive colours/tremor, whole dots as progress.

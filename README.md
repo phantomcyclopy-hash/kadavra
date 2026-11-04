@@ -1,10 +1,10 @@
-# Kadavra (v0.7.0)
+# Kadavra (v0.8.0)
 
 Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
 Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.
 
 ## Status (honest)
-- **v0.4.1 compiled, passed its tests and ran on the device.** Everything after it (0.5.0 – 0.7.0) was written
+- **v0.4.1 compiled, passed its tests and ran on the device.** Everything after it (0.5.0 – 0.8.0) was written
   without a build: expect compile errors on the first run of the GitHub Action; send the `e:` lines.
 - Not verified yet: sound quality of Safo/Mose by ear, real-time latency and glitches of the live player,
   memory/time on the A55, how the static screen fits small phones.
@@ -35,9 +35,15 @@ up whole, one per twelfth. With "remove animations" on, it stays still.
 | Mouton | Paulstretch-style spectral stretch (STFT, random phase), slicer/shuffler | done (compiled in 0.2.0) |
 | Safo | Granular synth modelled on The Secret Laboratory's Grainstorm, **live and offline** | written, unverified |
 | Mose | 6-band biquad EQ, slicer/shuffler | written, unverified |
-| Wagner · Heisenberg · Guglielmo · Velazquez | reverb · delay+distortion · noise/drone · image to sound | not implemented (`(n/a)`) |
+| Heisenberg | Delay (filtered, pitch-shifting feedback, ping-pong, tail) + distortion (soft, hard, asym, fold, bit-crush/sample-hold, drive, mix, level, pre/post), slicer/shuffler | written, unverified |
+| Wagner · Guglielmo · Velazquez | reverb · noise/drone · image to sound | not implemented (`(n/a)`) |
 
 Cindy (analyzer) was abandoned; Vlad was merged into Heisenberg.
+
+Heisenberg is a stateful per-sample effect (`HeisenbergFx`) driven by an offline engine, so the same code can run live
+and inside a track later. Not done yet: frequency-shifting, granular and spectral delays; no oversampling (hard clip,
+fold and crush alias). The pitch shifter sits in the feedback path, so every repeat shifts again (440 → 873 → 1740 Hz
+for +12 st, checked in a prototype).
 
 ### Safo vs. the original Grainstorm
 Reference: https://thesecretlaboratory.com/apps/grainstorm/instructions (read for v0.7.0). Implemented, following
@@ -72,7 +78,28 @@ activity-compose 1.9.2, lifecycle 2.8.6, coroutines 1.8.1, JUnit 4.13.2. Release
 Input ≤ 2 h, output ≤ 1 h and ≤ 1.5 GB, mono/stereo only, 16-bit WAV out (no MP3: Android has no MP3 encoder),
 peaks above 0.98 are lowered by one gain (never boosted), no dither.
 
+## Multitrack goal (design, not built)
+Aim: work with several audios at once, up to 7 tracks, and treat the whole as one living audio.
+- **Model:** a Session of up to 7 Tracks. A Track = decoded PCM cache file + peaks, the chosen engine with its own
+  parameters, and a mixer strip (gain, pan, mute, solo). The screen gets a track selector (1–7) like Grainstorm's.
+- **Modes:** *individual* (select a track and work on it, as today); *mix* (all tracks to a master bus, live or bounced
+  to a file); *merge* (generative: shuffle track order, randomise effect assignment/parameters with a seed, scheduled
+  transitions/crossfades between tracks).
+- **Live:** one audio thread renders every track's synth block by block, sums them on the master bus, limits, and streams
+  to a single `AudioTrack` (no thread per track). `SafoSynth` and `HeisenbergFx` are already streaming and
+  instantiable several times; Mose (biquads) is trivially streamable; Mouton needs a real-time STFT variant.
+- **Freeze and capture:** a ring buffer records the master (or a track) output; "freeze" loops a selected region and can
+  feed Safo as its source, so a frozen moment becomes grain material while everything else keeps moving.
+- **Live recording:** `AudioRecord` (needs the RECORD_AUDIO permission, asked at first use) writes into a track's
+  source while Safo reads behind the write head, as in Grainstorm's live mode; input monitoring is optional.
+- **Limits to respect:** CPU (7 granular voices × density: the LOAD meter must gate new grains), RAM (sources stay on
+  disk, random access), battery/thermal, and the static one-screen layout (the track selector replaces a row, not scroll).
+- **Order of work:** M1 track model + selector + per-track parameters; M2 live mix bus with several Safo voices and a master
+  meter; M3 merge tools (shuffle, random FX, crossfade); M4 capture/freeze; M5 live recording.
+
 ## Roadmap
-1. Make 0.7.0 compile and pass its tests; fix what the device shows.
-2. Safo: ENV page (ENV2), LFOs, envelope followers; then the FX rack; then phase vocoder; then more tracks.
-3. Mose/Mouton: live monitoring; Heisenberg, Wagner, Guglielmo, Velazquez.
+1. Make 0.8.0 compile and pass its tests; fix what the device shows.
+2. Multitrack M1–M2 (the architecture above), then M3–M5.
+3. Safo: ENV page (ENV2), LFOs, envelope followers, the FX rack, phase vocoder.
+4. Wagner (convolution reverb + delay networks), Guglielmo (noise/drone), Velazquez (image to sound); Heisenberg extras
+   (frequency shifter, granular and spectral delays).
