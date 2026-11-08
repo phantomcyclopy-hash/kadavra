@@ -1,4 +1,9 @@
 # Changelog
+## 0.10.0
+- Guglielmo: noise/drone generator (resonant bank with stiffness stretch, micro-oscillator wall, Lorenz chaos, saturating feedback loop), no input audio needed; generative processing path in the ViewModel.
+- `TermUi.kt`: coroutine imports added (the 0.9.0 compile fix, now in the source).
+- Not verified in a build.
+
 ## 0.9.0
 - Wagner: FDN reverb (RT60, size, damp, pre-delay, diffusion, mod, width, mix, tail) with the slicer/shuffler; `WagnerFx` is a streaming per-sample effect.
 - Light theme (`[Light]`/`[Dark]`), remembered; system bar icons follow.

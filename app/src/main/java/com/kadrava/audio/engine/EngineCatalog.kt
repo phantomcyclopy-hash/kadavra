@@ -10,7 +10,7 @@ object EngineCatalog {
         EngineInfo("mose", "Mose", "6-band equalizer (biquad)", true),
         EngineInfo("wagner", "Wagner", "feedback-delay-network reverb (8 lines, damping, diffusion, modulation)", true),
         EngineInfo("heisenberg", "Heisenberg", "delay with filtered, pitch-shifting feedback, plus distortion", true),
-        EngineInfo("guglielmo", "Guglielmo", "noise and drone", false),
+        EngineInfo("guglielmo", "Guglielmo", "noise and drone: resonant bank, micro-oscillator wall, chaos, feedback", true),
         EngineInfo("velazquez", "Velazquez", "image to sound", false),
     )
 }

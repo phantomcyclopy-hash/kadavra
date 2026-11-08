@@ -13,6 +13,8 @@ import com.kadrava.audio.audio.SafoLive
 import com.kadrava.audio.audio.WaveformDecoder
 import com.kadrava.audio.dsp.EqEngine
 import com.kadrava.audio.dsp.EqParams
+import com.kadrava.audio.dsp.GuglielmoEngine
+import com.kadrava.audio.dsp.GuglielmoParams
 import com.kadrava.audio.dsp.HeisenbergEngine
 import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.InvalidParamException
@@ -324,6 +326,9 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
     fun heis(f: (HeisenbergParams) -> HeisenbergParams) =
         _ui.update { it.copy(heis = f(it.heis), process = idleIfFinished(it.process)) }
 
+    fun gug(f: (GuglielmoParams) -> GuglielmoParams) =
+        _ui.update { it.copy(gug = f(it.gug), process = idleIfFinished(it.process)) }
+
     fun wag(f: (WagnerParams) -> WagnerParams) =
         _ui.update { it.copy(wag = f(it.wag), process = idleIfFinished(it.process)) }
 
@@ -406,6 +411,81 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
             preview = preview,
             truncateInputSeconds = PREVIEW_IN_MOSE_S,
         )
+    }
+
+    /** Guglielmo needs no input audio: it generates the sound, which can then be reintegrated and processed. */
+    fun startGuglielmo(preview: Boolean = false) {
+        val full = _ui.value.gug
+        val gp = if (preview) full.copy(durationSeconds = minOf(full.durationSeconds, PREVIEW_OUT_S)) else full
+        startGenerative(
+            tag = "guglielmo" + if (preview) "_preview" else "",
+            stage = "guglielmo",
+            check = { free -> OfflinePlanner.plan(1, gp.outputFrames(), 2, GuglielmoEngine.SAMPLE_RATE, free) },
+            produce = { sink, prog, canc -> GuglielmoEngine(gp).generate(sink, prog, canc) },
+            sampleRate = GuglielmoEngine.SAMPLE_RATE,
+            preview = preview,
+        )
+    }
+
+    private fun startGenerative(
+        tag: String, stage: String, sampleRate: Int,
+        check: (freeBytes: Long) -> Unit,
+        produce: (SampleSink, (Float) -> Unit, () -> Boolean) -> Long,
+        preview: Boolean,
+    ) {
+        val s = _ui.value
+        if (s.process is ProcessState.Running || s.process is ProcessState.Exporting) return
+        if (s.previewTrack != null || s.previewLoading) listenOriginal()
+        val started = SystemClock.elapsedRealtime()
+        var lastP = -1f
+        fun report(st: String, p: Float) {
+            if (p - lastP >= 0.005f || p >= 1f) {
+                lastP = p
+                _ui.update { if (it.process is ProcessState.Running) it.copy(process = ProcessState.Running(st, p, started)) else it }
+            }
+        }
+        _ui.update { it.copy(process = ProcessState.Running("preparing", 0f, started), message = null) }
+        procJob = viewModelScope.launch {
+            try {
+                val done = withContext(Dispatchers.IO) {
+                    val job = this.coroutineContext[Job]!!
+                    val cancelled = { !job.isActive }
+                    val work = workDir
+                    work.deleteRecursively()
+                    work.mkdirs()
+                    val out = File(work, "output.wav")
+                    var ok = false
+                    try {
+                        check(work.usableSpace)
+                        val r = OfflineRenderer.render(2, sampleRate, out, work, { p ->
+                            report(if (p < 0.85f) stage else "writing", p)
+                        }, cancelled) { sink, prog -> produce(sink, prog, cancelled) }
+                        val secs = r.outputFrames.toDouble() / r.sampleRate
+                        val outPeak = minOf(r.peak, PaulstretchRenderer.PEAK_CEILING)
+                        val gainNote = if (r.gain < 1f) " (lowered from ${dbfsText(r.peak)} dB)" else ""
+                        val summary = "${formatClock((secs * 1000).toLong())} ${r.sampleRate}Hz ${r.channels}ch peak ${dbfsText(outPeak)}dB" +
+                            (if (preview) " preview" else "") + gainNote
+                        ok = true
+                        ProcessState.Done(out, summary, "$tag.wav")
+                    } finally {
+                        if (!ok) out.delete()
+                    }
+                }
+                _ui.update { it.copy(process = done) }
+                if (preview) listenResult(autoPlay = true)
+            } catch (e: CancellationException) {
+                _ui.update { it.copy(process = ProcessState.Idle, message = "processing cancelled") }
+                throw e
+            } catch (e: ProcessingCancelled) {
+                _ui.update { it.copy(process = ProcessState.Idle, message = "processing cancelled") }
+            } catch (e: InvalidParamException) {
+                _ui.update { it.copy(process = ProcessState.Failed(e.message ?: "invalid parameters")) }
+            } catch (e: LimitException) {
+                _ui.update { it.copy(process = ProcessState.Failed(e.message ?: "limit exceeded")) }
+            } catch (e: Exception) {
+                _ui.update { it.copy(process = ProcessState.Failed("processing failed: ${e.message ?: e.javaClass.simpleName} (check free space)")) }
+            }
+        }
     }
 
     fun startSafo(preview: Boolean = false) {

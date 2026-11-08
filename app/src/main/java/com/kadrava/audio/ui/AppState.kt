@@ -1,6 +1,7 @@
 package com.kadrava.audio.ui
 
 import com.kadrava.audio.audio.WaveformData
+import com.kadrava.audio.dsp.GuglielmoParams
 import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.SafoParams
 import com.kadrava.audio.dsp.WagnerParams
@@ -50,6 +51,7 @@ data class UiState(
     val safo: SafoParams = SafoParams(),
     val heis: HeisenbergParams = HeisenbergParams(),
     val wag: WagnerParams = WagnerParams(),
+    val gug: GuglielmoParams = GuglielmoParams(),
     val live: LiveState = LiveState.Off,
     val liveFrozen: Boolean = false,
     val process: ProcessState = ProcessState.Idle,

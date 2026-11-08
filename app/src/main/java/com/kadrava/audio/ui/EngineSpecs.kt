@@ -10,6 +10,8 @@ import com.kadrava.audio.dsp.EnvShape
 import com.kadrava.audio.dsp.EqEngine
 import com.kadrava.audio.dsp.DistShape
 import com.kadrava.audio.dsp.EqParams
+import com.kadrava.audio.dsp.GuglielmoEngine
+import com.kadrava.audio.dsp.GuglielmoParams
 import com.kadrava.audio.dsp.HeisenbergParams
 import com.kadrava.audio.dsp.LoopMode
 import com.kadrava.audio.dsp.MagicEffect
@@ -351,5 +353,72 @@ fun wagnerSpec(ui: UiState, wf: WaveformData?, vm: KadavraViewModel): EngineSpec
         problem = estimate?.exceptionOrNull()?.message ?: if (wp.isNoOp) "mix 0: nothing to do" else null,
         onProcess = { vm.startWagner() },
         onPreview = { vm.startWagner(preview = true) },
+    )
+}
+
+/** Guglielmo: generates noise and drones (no input audio needed). */
+@Composable
+fun guglielmoSpec(ui: UiState, vm: KadavraViewModel): EngineSpec {
+    val free = LocalContext.current.cacheDir.usableSpace
+    val gp = ui.gug
+    val estimate = remember(gp, free) {
+        runCatching {
+            gp.validate()
+            OfflinePlanner.plan(1, gp.outputFrames(), 2, GuglielmoEngine.SAMPLE_RATE, free)
+        }
+    }
+    val b = busy(ui)
+    fun unit(label: String, v: Double, f: (GuglielmoParams, Double) -> GuglielmoParams) =
+        SliderCell(label, "%.2f".format(v), v.toFloat(), { x -> vm.gug { f(it, r2(x.toDouble())) } }, { t -> vm.gug { f(it, t.coerceIn(0.0, 1.0)) } })
+    val bank = listOf<Cell>(
+        SliderCell("ROOT", "%.1f Hz".format(gp.rootHz), logFrac(gp.rootHz, 20.0, 2000.0),
+            { f -> vm.gug { it.copy(rootHz = r1(logVal(f, 20.0, 2000.0))) } },
+            { v -> vm.gug { it.copy(rootHz = v.coerceIn(20.0, 2000.0)) } }),
+        SliderCell("MODES", "${gp.modes}", linFrac(gp.modes.toDouble(), 1.0, 16.0),
+            { f -> vm.gug { it.copy(modes = linVal(f, 1.0, 16.0).roundToInt().coerceIn(1, 16)) } },
+            { v -> vm.gug { it.copy(modes = v.roundToInt().coerceIn(1, 16)) } }),
+        unit("STRETCH", gp.stretch) { p, v -> p.copy(stretch = v) },
+        SliderCell("Q", "%.0f".format(gp.q), logFrac(gp.q, 5.0, 1000.0),
+            { f -> vm.gug { it.copy(q = round(logVal(f, 5.0, 1000.0))) } },
+            { v -> vm.gug { it.copy(q = v.coerceIn(5.0, 1000.0)) } }),
+        unit("NOISE", gp.noiseLevel) { p, v -> p.copy(noiseLevel = v) },
+        unit("COLOR", gp.noiseColor) { p, v -> p.copy(noiseColor = v) },
+    )
+    val wall = listOf<Cell>(
+        SliderCell("COUNT", "${gp.wallCount}", linFrac(gp.wallCount.toDouble(), 0.0, 128.0),
+            { f -> vm.gug { it.copy(wallCount = linVal(f, 0.0, 128.0).roundToInt().coerceIn(0, 128)) } },
+            { v -> vm.gug { it.copy(wallCount = v.roundToInt().coerceIn(0, 128)) } }),
+        unit("LEVEL", gp.wallLevel) { p, v -> p.copy(wallLevel = v) },
+        SliderCell("SPREAD", "%.0f ct".format(gp.wallSpread), linFrac(gp.wallSpread, 0.0, 100.0),
+            { f -> vm.gug { it.copy(wallSpread = round(linVal(f, 0.0, 100.0))) } },
+            { v -> vm.gug { it.copy(wallSpread = v.coerceIn(0.0, 100.0)) } }),
+    )
+    val chaos = listOf<Cell>(
+        unit("CHAOS", gp.chaos) { p, v -> p.copy(chaos = v) },
+        SliderCell("RATE", "%.2f Hz".format(gp.chaosRate), logFrac(gp.chaosRate, 0.01, 10.0),
+            { f -> vm.gug { it.copy(chaosRate = r2(logVal(f, 0.01, 10.0)).coerceAtLeast(0.01)) } },
+            { v -> vm.gug { it.copy(chaosRate = v.coerceIn(0.01, 10.0)) } }),
+        unit("FEEDBACK", gp.feedback) { p, v -> p.copy(feedback = v) },
+    )
+    val out = listOf<Cell>(
+        SliderCell("LENGTH", "%.0f s".format(gp.durationSeconds), logFrac(gp.durationSeconds, 1.0, 600.0),
+            { f -> vm.gug { it.copy(durationSeconds = round(logVal(f, 1.0, 600.0))) } },
+            { v -> vm.gug { it.copy(durationSeconds = v.coerceIn(1.0, 600.0)) } }),
+        unit("WIDTH", gp.width) { p, v -> p.copy(width = v) },
+        SliderCell("LEVEL", "%+.1f dB".format(gp.levelDb), linFrac(gp.levelDb, -24.0, 6.0),
+            { f -> vm.gug { it.copy(levelDb = r1(linVal(f, -24.0, 6.0))) } },
+            { v -> vm.gug { it.copy(levelDb = v.coerceIn(-24.0, 6.0)) } }),
+        SliderCell("FADE", "%.1f s".format(gp.fadeSeconds), linFrac(gp.fadeSeconds, 0.0, 10.0),
+            { f -> vm.gug { it.copy(fadeSeconds = r1(linVal(f, 0.0, 10.0))) } },
+            { v -> vm.gug { it.copy(fadeSeconds = v.coerceIn(0.0, 10.0)) } }),
+        NumberCell("SEED", "${gp.seed}", { v -> vm.gug { it.copy(seed = max(0L, v.toLong())) } },
+            { vm.gug { it.copy(seed = max(0L, it.seed - 1)) } }, { vm.gug { it.copy(seed = it.seed + 1) } }, !b),
+    )
+    return EngineSpec(
+        pages = listOf(ModulePage("BANK", listOf(bank)), ModulePage("WALL", listOf(wall)), ModulePage("CHAOS", listOf(chaos)), ModulePage("OUT", listOf(out))),
+        canProcess = estimate.isSuccess,
+        problem = estimate.exceptionOrNull()?.message,
+        onProcess = { vm.startGuglielmo() },
+        onPreview = { vm.startGuglielmo(preview = true) },
     )
 }

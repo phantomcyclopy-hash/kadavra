@@ -1,13 +1,13 @@
-# Kadavra (v0.9.0)
+# Kadavra (v0.10.0)
 
 Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
 Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.
 
 ## Status (honest)
-- **v0.8.x compiled, passed its tests, and has been opened and tried on the device by the author.** One note came back:
-  landscape was not symmetric (the export bar disappeared), so the app is now portrait-only.
-- **v0.9.0 (Wagner, light theme, flashing touch feedback, portrait lock) has not been built yet.**
-- Not verified: sound quality of Safo/Mose/Heisenberg/Wagner by ear, live-player glitches and LOAD on the A55.
+- **v0.9.0 built green on GitHub Actions** (after the missing coroutine imports in `TermUi.kt` were added by hand; the same
+  five imports are now in this source). Versions 0.8.x have been opened and tried on the device by the author.
+- **v0.10.0 (Guglielmo) has not been built yet.**
+- Not verified: sound quality of Safo/Mose/Heisenberg/Wagner/Guglielmo by ear, live-player glitches and LOAD on the A55.
 
 ## Interface rules
 - Single static screen (no scrolling), pure black, DejaVu Sans Mono (third_party/DejaVu-LICENSE.txt), all text in English.
@@ -41,12 +41,17 @@ up whole, one per twelfth. With "remove animations" on, it stays still.
 | Mose | 6-band biquad EQ, slicer/shuffler | written, unverified |
 | Heisenberg | Delay (filtered, pitch-shifting feedback, ping-pong, tail) + distortion (soft, hard, asym, fold, bit-crush/sample-hold, drive, mix, level, pre/post), slicer/shuffler | written, unverified |
 | Wagner | Feedback-delay-network reverb: 8 delay lines + Householder matrix, per-line damping, input diffusers, modulation, pre-delay, width, mix, tail; slicer/shuffler | written, unverified |
-| Guglielmo · Velazquez | noise/drone · image to sound | not implemented (`(n/a)`) |
+| Guglielmo | Noise and drone **generator** (needs no input audio): resonant band-pass bank at the partials of a root (stiffness stretch, Q, noise colour), wall of up to 128 micro-oscillators with slow amplitude drift, Lorenz-attractor chaos bending the bank, cross-fed saturating feedback loop; fixed 44.1 kHz stereo, deterministic by seed | written, unverified |
+| Velazquez | image to sound | not implemented (`(n/a)`) |
 
 Cindy (analyzer) was abandoned; Vlad was merged into Heisenberg.
 
 Wagner's decay time (RT60) was measured in a prototype within about 3% of the setting (damping 0, modulation 0); it is a
 synthetic room. Convolution with an impulse response is planned together with multitrack (another track can be the IR).
+
+Guglielmo works without a loaded audio: `[Process]`/`[Preview]` generate the sound; `[Reintegrate]` then makes it the loaded
+audio so any other engine can process it. Not done yet: spectral freeze and phase-vocoder smearing, using a loaded audio as the
+bank's input.
 
 Heisenberg is a stateful per-sample effect (`HeisenbergFx`) driven by an offline engine, so the same code can run live
 and inside a track later. Not done yet: frequency-shifting, granular and spectral delays; no oversampling (hard clip,
@@ -109,5 +114,5 @@ Aim: work with several audios at once, up to 7 tracks, and treat the whole as on
 1. Make 0.8.0 compile and pass its tests; fix what the device shows.
 2. Multitrack M1–M2 (the architecture above), then M3–M5.
 3. Safo: ENV page (ENV2), LFOs, envelope followers, the FX rack, phase vocoder.
-4. Wagner convolution (needs a second audio as IR), Guglielmo (noise/drone), Velazquez (image to sound); Heisenberg extras
+4. Wagner convolution (needs a second audio as IR), Velazquez (image to sound), Guglielmo extras (spectral freeze, loaded audio as bank input); Heisenberg extras
    (frequency shifter, granular and spectral delays).
