@@ -1,4 +1,4 @@
-# Kadavra (v0.10.0)
+# Kadavra (v0.10.1)
 
 Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
 Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.

@@ -1,4 +1,8 @@
 # Changelog
+## 0.10.1
+- Guglielmo chaos fixed (found by `chaosBendsTheBankOverTime`): the Lorenz source started near (1,1,1) with a warm-up measured in control steps (about 4 system time units at rate 1, almost none at low rates), so the trajectory was the same for every seed and moved little; `x/20` gave a standard deviation of about 0.4, i.e. +-1.2 semitones instead of the documented +-3. Now: `LorenzAttractor` (RK4, sub-steps of at most 0.005, seed-dependent start, 25 time units of warm-up so it is on the attractor, tanh-normalised outputs), control interval 32 samples. Measured in a prototype: spread 21-27 Hz -> 118-138 Hz, seeds decorrelated, x std 7.92 (theory 7.9).
+- Tests: `LorenzTest` (determinism, seed variety, long-run statistics, step invariance, range); the chaos test now uses a spectral centroid over 17 windows and reports the measured values; added a seed-trajectory test.
+
 ## 0.10.0
 - Guglielmo: noise/drone generator (resonant bank with stiffness stretch, micro-oscillator wall, Lorenz chaos, saturating feedback loop), no input audio needed; generative processing path in the ViewModel.
 - `TermUi.kt`: coroutine imports added (the 0.9.0 compile fix, now in the source).

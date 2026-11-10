@@ -15,8 +15,8 @@ import kotlin.math.tanh
  *   (stiff-string stretching with [stretch], resonance [q]); [noiseColor] goes from white to brown.
  * - WALL: [wallCount] micro-oscillators detuned by up to [wallSpread] cents around the harmonics, each with its own
  *   slow amplitude drift.
- * - CHAOS: a Lorenz attractor (speed [chaosRate]) bends the bank frequencies by up to +-3 semitones x [chaos] and
- *   swells the wall.
+ * - CHAOS: a Lorenz attractor (speed [chaosRate], 1.0 = natural speed) bends the bank frequencies by up to +-3 semitones
+ *   x [chaos] (typically about +-2) and swells the wall; the seed decides where on the attractor it starts.
  * - FEEDBACK: a cross-fed saturating delay loop (no-input-mixing style) blended in by [feedback].
  * Deterministic for a [seed]; always 44.1 kHz stereo; the output is bounded by a tanh limiter.
  */
@@ -120,16 +120,9 @@ class GuglielmoEngine(private val p: GuglielmoParams) {
         }
         val wallScale = if (wc > 0) WALL_SCALE * p.wallLevel / sqrt(wc.toDouble()) else 0.0
 
-        // ---- chaos (Lorenz), stepped at control rate
-        var lx = 1.0 + 0.1 * rng.nextDouble(); var ly = 1.0; var lz = 1.0
-        val dt = p.chaosRate * CONTROL / sr
-        fun stepLorenz() {
-            val dx = 10.0 * (ly - lx)
-            val dy = lx * (28.0 - lz) - ly
-            val dz = lx * ly - (8.0 / 3.0) * lz
-            lx += dt * dx; ly += dt * dy; lz += dt * dz
-        }
-        repeat(3000) { stepLorenz() }
+        // ---- chaos: Lorenz attractor (RK4, on the attractor from the start, seed-dependent), stepped at control rate
+        val lorenz = LorenzAttractor(p.seed)
+        val chaosDt = p.chaosRate * CONTROL / sr
 
         // ---- noise colour and feedback loop
         var brown = 0.0
@@ -157,10 +150,12 @@ class GuglielmoEngine(private val p: GuglielmoParams) {
             for (f in 0 until m) {
                 val t = pos + f
                 if ((t % CONTROL) == 0L) {
-                    stepLorenz()
-                    modNx = (lx / 20.0).coerceIn(-1.5, 1.5)
-                    modNy = (ly / 25.0).coerceIn(-1.5, 1.5)
-                    wallSwell = max(0.0, 1.0 + p.chaos * 0.8 * ((lz - 25.0) / 25.0).coerceIn(-1.5, 1.5))
+                    if (p.chaos > 0.0) {
+                        lorenz.advance(chaosDt)
+                        modNx = lorenz.nx
+                        modNy = lorenz.ny
+                        wallSwell = max(0.0, 1.0 + p.chaos * 0.8 * lorenz.nz)
+                    }
                     for (k in 0 until nm) {
                         if (!active[k]) continue
                         val mod = 2.0.pow(p.chaos * 3.0 / 12.0 * (if (k % 2 == 0) modNx else modNy))
@@ -240,7 +235,7 @@ class GuglielmoEngine(private val p: GuglielmoParams) {
 
     companion object {
         const val SAMPLE_RATE = 44100
-        private const val CONTROL = 64
+        private const val CONTROL = 32
         private const val BANK_SCALE = 0.25
         private const val WALL_SCALE = 0.5
     }

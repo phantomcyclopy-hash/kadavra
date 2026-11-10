@@ -97,14 +97,38 @@ class GuglielmoTest {
         assertEquals(203.96, peakIn(stretched, 150.0, 260.0), 5.0)
     }
 
-    @Test fun chaosBendsTheBankOverTime() {
-        val p = tone(440.0).copy(q = 100.0, chaos = 1.0, chaosRate = 1.0, durationSeconds = 10.0)
-        val out = left(gen(p))
-        val freqs = (1..7).map { peakIn(spectrum(out, sr * it, 8192), 250.0, 800.0, 8192) }
-        assertTrue("freqs $freqs", freqs.max() - freqs.min() > 20.0)
-        val still = left(gen(p.copy(chaos = 0.0)))
-        val f2 = (1..7).map { peakIn(spectrum(still, sr * it, 8192), 250.0, 800.0, 8192) }
-        assertTrue("without chaos $f2", f2.max() - f2.min() < 15.0)
+    /** Power-weighted spectral centroid (Hz) of a window: a stable estimate of where a narrow resonance sits. */
+    private fun centroid(a: FloatArray, from: Int, n: Int = 16384, lo: Double = 250.0, hi: Double = 800.0): Double {
+        val sp = spectrum(a, from, n)
+        var num = 0.0; var den = 0.0
+        for (i in (lo * n / sr).toInt()..(hi * n / sr).toInt()) {
+            val f = i * sr.toDouble() / n
+            num += sp[i] * sp[i] * f; den += sp[i] * sp[i]
+        }
+        return num / den
+    }
+
+    private fun centroids(a: FloatArray) = (0..16).map { centroid(a, (sr * (1.0 + 0.5 * it)).toInt()) }
+
+    private fun chaosTone() = tone(440.0).copy(q = 100.0, chaos = 1.0, chaosRate = 1.0, durationSeconds = 11.0)
+
+    @Test fun chaosBendsTheBankOverTimeButNotWithoutChaos() {
+        val bent = centroids(left(gen(chaosTone())))
+        val still = centroids(left(gen(chaosTone().copy(chaos = 0.0))))
+        val bentSpread = bent.max() - bent.min()
+        val stillSpread = still.max() - still.min()
+        assertTrue("chaos centroids ${bent.map { round(it) }} spread $bentSpread", bentSpread > 60.0)
+        assertTrue("chaos 0 centroids ${still.map { round(it) }} spread $stillSpread", stillSpread < 16.0)
+        assertTrue("chaos must dominate the estimation jitter: $bentSpread vs $stillSpread", bentSpread > 3 * stillSpread)
+        assertTrue("bend stays within +-3 semitones: ${bent.min()}..${bent.max()}", bent.min() > 440.0 * 0.82 && bent.max() < 440.0 * 1.22)
+    }
+
+    @Test fun theSeedChoosesTheChaosTrajectory() {
+        val a = centroids(left(gen(chaosTone().copy(seed = 1))))
+        val b = centroids(left(gen(chaosTone().copy(seed = 2))))
+        val maxDiff = a.indices.maxOf { abs(a[it] - b[it]) }
+        assertTrue("seed 1 ${a.map { round(it) }} seed 2 ${b.map { round(it) }}", maxDiff > 25.0)
+        assertTrue(a == centroids(left(gen(chaosTone().copy(seed = 1)))))   // and each seed is repeatable
     }
 
     @Test fun theWallSoundsAtHarmonicsOfTheRoot() {
