@@ -38,6 +38,7 @@ import com.kadrava.audio.dsp.TruncatedPcmSource
 import com.kadrava.audio.dsp.WagnerEngine
 import com.kadrava.audio.dsp.WagnerParams
 import com.kadrava.audio.engine.EngineCatalog
+import com.kadrava.audio.util.canPlayNow
 import com.kadrava.audio.util.dbfsText
 import com.kadrava.audio.util.formatClock
 import kotlinx.coroutines.CancellationException
@@ -152,7 +153,11 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun canPlay(): Boolean = _ui.value.load is LoadState.Ready && !_ui.value.previewLoading
+    /** Audio may come from a loaded file or from a result/generated track (Guglielmo needs no import). */
+    private fun canPlay(): Boolean {
+        val u = _ui.value
+        return canPlayNow(u.load is LoadState.Ready, u.previewTrack != null, u.previewLoading)
+    }
 
     fun play() {
         if (!canPlay() || _ui.value.playing) return
@@ -251,13 +256,13 @@ class KadavraViewModel(app: Application) : AndroidViewModel(app) {
 
     fun listenOriginal() {
         if (_ui.value.previewTrack == null && !_ui.value.previewLoading) return
-        val uri = currentUri ?: return
         previewJob?.cancel()
         pause()
         stopTicker()
         player.release()
         _pos.value = 0
         _ui.update { it.copy(previewTrack = null, previewLoading = false, playing = false) }
+        val uri = currentUri ?: return   // nothing was imported (generator-only): back to empty
         preparePlayer(uri) {}
     }
 

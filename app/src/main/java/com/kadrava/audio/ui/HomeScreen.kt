@@ -131,7 +131,7 @@ fun HomeScreen(vm: KadavraViewModel = viewModel()) {
                 if (load is LoadState.Loading) {
                     TermItem(listOf(Span("[Cancel]", kind = SpanKind.CONTROL)), separator = false, onClick = vm::cancelLoad)
                 } else {
-                    TermItem(listOf(Span("[Eject]", kind = SpanKind.CONTROL)), enabled = load !is LoadState.Idle, separator = false,
+                    TermItem(listOf(Span("[Eject]", kind = SpanKind.CONTROL)), enabled = load !is LoadState.Idle || ui.process is ProcessState.Done || ui.previewTrack != null, separator = false,
                         onClick = vm::eject, description = "Eject: remove all audio")
                 }
             }

@@ -1,4 +1,11 @@
 # Changelog
+## 0.11.0 — v1.0.0 Stage A (foundation)
+- Fix: results of generators (Guglielmo) can be played, rewound and seeked with no imported audio; `[Original]` clears a generator-only result; `[Eject]` is enabled whenever there is a result.
+- New `session` package: `SessionModel`/`TrackModel` (up to 7 independent tracks), `EngineCaps`, per-track `EngineSettings`, `TrackCache`.
+- New `Mixer` (central block-based mix: sample-aligned tracks, gain/pan/mute/solo, offsets, resampling, loop, seek, meters, master gain, soft limiter) and `MixPlayer` (one thread, one AudioTrack). Not wired to the UI yet.
+- Docs: `docs/AUDIT.md`, `docs/ARCHITECTURE.md`.
+- Not verified in a build.
+
 ## 0.10.1
 - Guglielmo chaos fixed (found by `chaosBendsTheBankOverTime`): the Lorenz source started near (1,1,1) with a warm-up measured in control steps (about 4 system time units at rate 1, almost none at low rates), so the trajectory was the same for every seed and moved little; `x/20` gave a standard deviation of about 0.4, i.e. +-1.2 semitones instead of the documented +-3. Now: `LorenzAttractor` (RK4, sub-steps of at most 0.005, seed-dependent start, 25 time units of warm-up so it is on the attractor, tanh-normalised outputs), control interval 32 samples. Measured in a prototype: spread 21-27 Hz -> 118-138 Hz, seeds decorrelated, x std 7.92 (theory 7.9).
 - Tests: `LorenzTest` (determinism, seed variety, long-run statistics, step invariance, range); the chaos test now uses a spectral centroid over 17 windows and reports the measured values; added a seed-trajectory test.

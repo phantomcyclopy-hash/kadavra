@@ -1,13 +1,17 @@
-# Kadavra (v0.10.1)
+# Kadavra (v0.11.0)
 
 Android audio workstation (Kotlin + Jetpack Compose) with a terminal-style, all-text interface.
 Application ID `com.kadrava.audio` · minSdk 26 · target Galaxy A55.
 
 ## Status (honest)
-- **v0.9.0 built green on GitHub Actions** (after the missing coroutine imports in `TermUi.kt` were added by hand; the same
-  five imports are now in this source). Versions 0.8.x have been opened and tried on the device by the author.
-- **v0.10.0 (Guglielmo) has not been built yet.**
-- Not verified: sound quality of Safo/Mose/Heisenberg/Wagner/Guglielmo by ear, live-player glitches and LOAD on the A55.
+- **v0.10.1 and earlier: built green on GitHub Actions** and tried on the device (0.8.x).
+- **v0.11.0 = Stage A of the v1.0.0 plan.** Not v1.0.0. It adds the session model, engine capability table, the central
+  mixer, a single-thread player and the track cache (all pure code with unit tests), and fixes a real bug: results of
+  generators such as Guglielmo could not be played when no audio had been imported. None of the new session code is
+  connected to the screen yet; the screen is still the single-audio terminal UI. **Not built yet.**
+- See `docs/AUDIT.md` (what the code really does) and `docs/ARCHITECTURE.md` (stages B-E, what is tested, what needs a device).
+- Not verified: sound quality of Safo/Mose/Heisenberg/Wagner/Guglielmo by ear, live-player glitches and LOAD on the A55,
+  `MixPlayer` on hardware.
 
 ## Interface rules
 - Single static screen (no scrolling), pure black, DejaVu Sans Mono (third_party/DejaVu-LICENSE.txt), all text in English.
